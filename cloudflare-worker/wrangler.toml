@@ -11,4 +11,4 @@ script_name = "clipboard-sync-relay"
 # Durable Objects migration
 [[migrations]]
 tag = "v1"
-new_classes = ["ClipboardSession"]
+new_sqlite_classes = ["ClipboardSession"]
