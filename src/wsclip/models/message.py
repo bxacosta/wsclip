@@ -10,6 +10,7 @@ MessageType = Literal[
     'auth',
     'auth_response',
     'text_message',
+    'clipboard_text',  # Phase 2
     'peer_connected',
     'peer_disconnected',
     'error'
@@ -58,6 +59,16 @@ class TextMessage(BaseMessage):
 
 
 @dataclass
+class ClipboardTextMessage(BaseMessage):
+    """Clipboard text content message (Phase 2)"""
+    type: Literal['clipboard_text'] = 'clipboard_text'
+    from_peer: str = field(default='', metadata={'json_key': 'from'})
+    content: str = ''
+    message_id: str = ''
+    source: Literal['auto', 'manual'] = 'manual'  # How it was sent
+
+
+@dataclass
 class PeerEventMessage(BaseMessage):
     """Peer connection/disconnection event"""
     type: Literal['peer_connected', 'peer_disconnected'] = 'peer_connected'
@@ -98,6 +109,11 @@ def dict_to_message(data: dict[str, object]) -> BaseMessage:
         data_copy = data.copy()
         data_copy['from_peer'] = data_copy.pop('from', '')
         return TextMessage(**data_copy)  # type: ignore
+    elif msg_type == 'clipboard_text':
+        # Map 'from' -> 'from_peer'
+        data_copy = data.copy()
+        data_copy['from_peer'] = data_copy.pop('from', '')
+        return ClipboardTextMessage(**data_copy)  # type: ignore
     elif msg_type in ['peer_connected', 'peer_disconnected']:
         return PeerEventMessage(**data)  # type: ignore
     elif msg_type == 'error':
