@@ -3,6 +3,7 @@ CLI application entry point
 """
 import asyncio
 import sys
+import uuid
 from pathlib import Path
 from typing import Optional
 import click
@@ -13,6 +14,22 @@ from .core.websocket_client import WebSocketClient
 from .models.config import AppConfig, ProxyConfig
 from .utils.logger import console, print_info, print_success, print_error
 from .constants import DEFAULT_WORKER_URL
+
+
+def get_or_generate_peer_id(config: AppConfig) -> str:
+    """
+    Get peer_id from config or generate new one
+
+    Args:
+        config: Application configuration
+
+    Returns:
+        peer_id in format: "peer-{uuid8}" or custom from config
+    """
+    if config.peer_id and config.peer_id.strip():
+        return config.peer_id.strip()
+    else:
+        return f"peer-{uuid.uuid4().hex[:8]}"
 
 
 @click.group()
@@ -43,9 +60,12 @@ def pair(worker_url: Optional[str], config: str) -> None:
         worker_url_value = worker_url or DEFAULT_WORKER_URL
         app_config = AppConfig(
             worker_url=worker_url_value,
-            peer_id='peer_a',
+            peer_id='',
             proxy=ProxyConfig()
         )
+
+    # Generate peer_id if not defined
+    app_config.peer_id = get_or_generate_peer_id(app_config)
 
     # Generate token from Worker
     console.print("[cyan]Generating pairing token...[/cyan]")
@@ -102,9 +122,12 @@ def connect(token: str, worker_url: Optional[str], config: str) -> None:
         worker_url_value = worker_url or DEFAULT_WORKER_URL
         app_config = AppConfig(
             worker_url=worker_url_value,
-            peer_id='peer_b',
+            peer_id='',
             proxy=ProxyConfig()
         )
+
+    # Generate peer_id if not defined
+    app_config.peer_id = get_or_generate_peer_id(app_config)
 
     # Set token
     app_config.token = token

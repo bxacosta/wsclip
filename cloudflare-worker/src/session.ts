@@ -15,7 +15,8 @@ import type {
  */
 export class ClipboardSession extends DurableObject<Env> {
   private token: string = '';
-  private peers: Map<string, WebSocket> = new Map();
+  // Note: With Hibernation API, we use ctx.getWebSockets() instead of manual Map
+  // The peerId is stored in WebSocket tags
 
   /**
    * HTTP fetch handler - called when WebSocket upgrade is requested
@@ -37,45 +38,45 @@ export class ClipboardSession extends DurableObject<Env> {
       return new Response('Missing token or peer_id', { status: 400 });
     }
 
-    // Create WebSocket pair
-    const pair = new WebSocketPair();
-    const [client, server] = Object.values(pair);
-
-    // Accept WebSocket with Hibernation API
-    this.ctx.acceptWebSocket(server, [peerId]);
-
     // Store token on first connection
     if (!this.token) {
       this.token = token;
     }
 
-    // Validate token matches
+    // Validate token matches BEFORE accepting WebSocket
     if (this.token !== token) {
-      // Send structured error message before closing
-      const errorMsg: ErrorMessage = {
-        type: 'error',
-        code: 'TOKEN_INVALID',
-        message: 'Invalid token',
-        timestamp: new Date().toISOString(),
-      };
-      server.send(JSON.stringify(errorMsg));
-      server.close(1008, 'Invalid token');
-      return new Response(null, { status: 101, webSocket: client });
+      return new Response('Invalid token', { status: 403 });
     }
 
-    // Check peer limit (max 2)
-    if (this.peers.size >= 2 && !this.peers.has(peerId)) {
-      // Send structured error message before closing
-      const errorMsg: ErrorMessage = {
-        type: 'error',
-        code: 'PEER_LIMIT',
-        message: 'Peer limit reached (maximum 2 peers per session)',
-        timestamp: new Date().toISOString(),
-      };
-      server.send(JSON.stringify(errorMsg));
-      server.close(1008, 'Peer limit reached');
-      return new Response(null, { status: 101, webSocket: client });
+    // Check for duplicate peer_id and collect unique peer IDs BEFORE accepting
+    const currentPeers = this.ctx.getWebSockets();
+    const uniquePeerIds = new Set<string>();
+
+    for (const ws of currentPeers) {
+      const tags = this.ctx.getTags(ws);
+      if (tags.length > 0) {
+        const existingPeerId = tags[0];
+
+        // Check for duplicate peer_id (strict validation)
+        if (existingPeerId === peerId) {
+          return new Response('This peer_id is already connected to this session', { status: 409 });
+        }
+
+        uniquePeerIds.add(existingPeerId);
+      }
     }
+
+    // If this is a new peer ID and we already have 2 unique peers, reject
+    if (uniquePeerIds.size >= 2 && !uniquePeerIds.has(peerId)) {
+      return new Response('Peer limit reached (maximum 2 peers per session)', { status: 429 });
+    }
+
+    // All validations passed, now accept WebSocket
+    const pair = new WebSocketPair();
+    const [client, server] = Object.values(pair);
+
+    // Accept WebSocket with Hibernation API
+    this.ctx.acceptWebSocket(server, [peerId]);
 
     // Return WebSocket response
     return new Response(null, {
@@ -119,25 +120,16 @@ export class ClipboardSession extends DurableObject<Env> {
    * Called when WebSocket is closed (Hibernation API)
    */
   async webSocketClose(ws: WebSocket, code: number, reason: string, wasClean: boolean): Promise<void> {
-    // Find and remove peer
-    let disconnectedPeerId: string | null = null;
-
-    for (const [peerId, socket] of this.peers.entries()) {
-      if (socket === ws) {
-        disconnectedPeerId = peerId;
-        this.peers.delete(peerId);
-        break;
-      }
-    }
+    // Get peer ID from WebSocket tags
+    const tags = this.ctx.getTags(ws);
+    const disconnectedPeerId = tags[0] || 'unknown';
 
     // Notify other peer about disconnection
-    if (disconnectedPeerId) {
-      this.broadcastToOthers(ws, {
-        type: 'peer_disconnected',
-        peer_id: disconnectedPeerId,
-        timestamp: new Date().toISOString(),
-      });
-    }
+    this.broadcastToOthers(ws, {
+      type: 'peer_disconnected',
+      peer_id: disconnectedPeerId,
+      timestamp: new Date().toISOString(),
+    });
 
     console.log(`Peer disconnected: ${disconnectedPeerId}, code: ${code}, reason: ${reason}`);
   }
@@ -155,14 +147,15 @@ export class ClipboardSession extends DurableObject<Env> {
   private async handleAuth(ws: WebSocket, msg: AuthMessage): Promise<void> {
     const { token, peer_id } = msg;
 
-    // Check if peer already connected
-    if (this.peers.has(peer_id)) {
-      this.sendError(ws, 'ALREADY_CONNECTED', 'Peer already connected');
+    // Get current peer ID from tags
+    const tags = this.ctx.getTags(ws);
+    const currentPeerId = tags[0];
+
+    // Verify peer_id matches what was provided during connection
+    if (currentPeerId !== peer_id) {
+      this.sendError(ws, 'INTERNAL_ERROR', 'Peer ID mismatch');
       return;
     }
-
-    // Add peer to session
-    this.peers.set(peer_id, ws);
 
     // Send auth response
     const response: AuthResponseMessage = {
@@ -182,7 +175,8 @@ export class ClipboardSession extends DurableObject<Env> {
       timestamp: new Date().toISOString(),
     });
 
-    console.log(`Peer authenticated: ${peer_id}, total peers: ${this.peers.size}`);
+    const totalPeers = this.ctx.getWebSockets().length;
+    console.log(`Peer authenticated: ${peer_id}, total peers: ${totalPeers}`);
   }
 
   /**
@@ -212,12 +206,18 @@ export class ClipboardSession extends DurableObject<Env> {
    */
   private broadcastToOthers(sender: WebSocket, message: Partial<WebSocketMessage>): void {
     const msgStr = JSON.stringify(message);
+    const allWebSockets = this.ctx.getWebSockets();
 
-    for (const [peerId, socket] of this.peers.entries()) {
-      if (socket !== sender) {
+    for (const ws of allWebSockets) {
+      if (ws !== sender) {
         try {
-          socket.send(msgStr);
+          const tags = this.ctx.getTags(ws);
+          const peerId = tags[0] || 'unknown';
+          ws.send(msgStr);
+          console.log(`Sent message to peer: ${peerId}`);
         } catch (error) {
+          const tags = this.ctx.getTags(ws);
+          const peerId = tags[0] || 'unknown';
           console.error(`Failed to send to peer ${peerId}:`, error);
         }
       }
@@ -228,11 +228,17 @@ export class ClipboardSession extends DurableObject<Env> {
    * Get the other peer's ID in the session
    */
   private getOtherPeerId(currentPeerId: string): string | null {
-    for (const peerId of this.peers.keys()) {
-      if (peerId !== currentPeerId) {
+    const allWebSockets = this.ctx.getWebSockets();
+
+    for (const ws of allWebSockets) {
+      const tags = this.ctx.getTags(ws);
+      const peerId = tags[0];
+
+      if (peerId && peerId !== currentPeerId) {
         return peerId;
       }
     }
+
     return null;
   }
 }
