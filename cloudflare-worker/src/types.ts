@@ -7,6 +7,7 @@ export type MessageType =
   | 'auth'
   | 'auth_response'
   | 'text_message'
+  | 'clipboard_text'  // Phase 2
   | 'peer_connected'
   | 'peer_disconnected'
   | 'error';
@@ -41,6 +42,15 @@ export interface TextMessage extends BaseMessage {
   message_id: string;
 }
 
+// Clipboard text content message (Phase 2)
+export interface ClipboardTextMessage extends BaseMessage {
+  type: 'clipboard_text';
+  from: string;
+  content: string;
+  message_id: string;
+  source: 'auto' | 'manual';
+}
+
 // Peer connection events
 export interface PeerEventMessage extends BaseMessage {
   type: 'peer_connected' | 'peer_disconnected';
@@ -59,6 +69,7 @@ export type WebSocketMessage =
   | AuthMessage
   | AuthResponseMessage
   | TextMessage
+  | ClipboardTextMessage  // Phase 2
   | PeerEventMessage
   | ErrorMessage;
 

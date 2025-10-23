@@ -3,6 +3,7 @@ import type {
   WebSocketMessage,
   AuthMessage,
   TextMessage,
+  ClipboardTextMessage,
   ErrorMessage,
   AuthResponseMessage,
   Env,
@@ -107,6 +108,10 @@ export class ClipboardSession extends DurableObject<Env> {
           await this.handleTextMessage(ws, msg as TextMessage);
           break;
 
+        case 'clipboard_text':
+          await this.handleClipboardText(ws, msg as ClipboardTextMessage);
+          break;
+
         default:
           this.sendError(ws, 'INTERNAL_ERROR', `Unknown message type: ${msg.type}`);
       }
@@ -185,6 +190,16 @@ export class ClipboardSession extends DurableObject<Env> {
   private async handleTextMessage(ws: WebSocket, msg: TextMessage): Promise<void> {
     // Simply relay to other peer
     this.broadcastToOthers(ws, msg);
+  }
+
+  /**
+   * Handle clipboard text message relay (Phase 2)
+   */
+  private async handleClipboardText(ws: WebSocket, msg: ClipboardTextMessage): Promise<void> {
+    // Simply relay to other peer
+    this.broadcastToOthers(ws, msg);
+
+    console.log(`Clipboard relay: ${msg.from} -> peer (${msg.source}, ${msg.content.length} chars)`);
   }
 
   /**

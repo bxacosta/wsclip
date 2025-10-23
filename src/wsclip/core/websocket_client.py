@@ -12,6 +12,7 @@ from ..models.message import (
     AuthMessage,
     AuthResponseMessage,
     TextMessage,
+    ClipboardTextMessage,
     PeerEventMessage,
     ErrorMessage,
     BaseMessage,
@@ -20,6 +21,7 @@ from ..models.message import (
 )
 from ..utils.logger import setup_logger, print_message, print_info, print_warning, print_error, print_success
 from ..constants import WS_CONNECT_TIMEOUT, WS_PING_INTERVAL, WS_PING_TIMEOUT
+from .reconnect_strategy import ReconnectionStrategy
 
 
 # Type alias for message handler
@@ -36,7 +38,8 @@ class WebSocketClient:
         worker_url: str,
         token: str,
         peer_id: str,
-        log_level: str = "INFO"
+        log_level: str = "INFO",
+        enable_reconnect: bool = True
     ):
         """
         Initialize WebSocket client
@@ -46,6 +49,7 @@ class WebSocketClient:
             token: Pairing token
             peer_id: This peer's unique identifier
             log_level: Logging level
+            enable_reconnect: Enable automatic reconnection (Phase 2)
         """
         self.worker_url = worker_url
         self.token = token
@@ -62,6 +66,11 @@ class WebSocketClient:
 
         # Running flag
         self._running = False
+
+        # Phase 2: Reconnection
+        self.enable_reconnect = enable_reconnect
+        self.reconnect_strategy = ReconnectionStrategy() if enable_reconnect else None
+        self._connection_task: Optional[asyncio.Task] = None
 
     async def connect(self) -> bool:
         """
@@ -128,8 +137,12 @@ class WebSocketClient:
         self._running = False
 
         if self.websocket:
-            await self.websocket.close()
-            self.websocket = None
+            try:
+                await self.websocket.close()
+            except Exception as e:
+                self.logger.debug(f"Error closing WebSocket: {e}")
+            finally:
+                self.websocket = None
 
         self.authenticated = False
         self.logger.info("Disconnected")
@@ -174,8 +187,9 @@ class WebSocketClient:
                 if msg:
                     await self._handle_message(msg)
 
-        except KeyboardInterrupt:
-            print_info("Interrupted by user")
+        except (KeyboardInterrupt, asyncio.CancelledError):
+            # Graceful shutdown
+            pass
         except WebSocketException as e:
             self.logger.error(f"WebSocket error: {e}")
             print_error(f"Connection lost: {e}")
@@ -245,5 +259,68 @@ class WebSocketClient:
         elif isinstance(message, ErrorMessage):
             print_error(f"Server error [{message.code}]: {message.message}")
 
+        elif isinstance(message, ClipboardTextMessage):
+            # Phase 2: Default handler for clipboard messages
+            print_message(message.from_peer, f"[Clipboard {message.source}] {message.content[:50]}...")
+
         else:
             self.logger.warning(f"Unhandled message type: {msg_type}")
+
+    async def connect_with_retry(self) -> bool:
+        """
+        Connect with automatic retry (Phase 2)
+
+        Returns:
+            True if connected, False if failed after all retries
+        """
+        if not self.enable_reconnect or not self.reconnect_strategy:
+            return await self.connect()
+
+        return await self.reconnect_strategy.connect_with_retry(self.connect)
+
+    async def send_clipboard(self, content: str, source: str) -> None:
+        """
+        Send clipboard content to peer (Phase 2)
+
+        Args:
+            content: Clipboard text content
+            source: Origin of clipboard ('auto' or 'manual')
+        """
+        if not self.authenticated:
+            print_error("Not authenticated")
+            return
+
+        # Create clipboard message
+        msg = ClipboardTextMessage(
+            from_peer=self.peer_id,
+            content=content,
+            message_id=str(uuid.uuid4()),
+            source=source  # type: ignore
+        )
+
+        await self._send_message(msg)
+        self.logger.debug(f"Sent clipboard ({source}): {len(content)} chars")
+
+    async def maintain_connection(self) -> None:
+        """
+        Maintain connection with auto-reconnect (Phase 2)
+        Runs in background, reconnects on disconnect
+        """
+        while self.enable_reconnect:
+            try:
+                # Only connect if not already connected
+                if not self.authenticated or not self.websocket:
+                    connected = await self.connect_with_retry()
+
+                    if not connected:
+                        print_error("Failed to establish connection")
+                        break
+
+                # Listen for messages (blocks until disconnect)
+                await self.listen()
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                self.logger.error(f"Connection error: {e}")
+                await asyncio.sleep(1)

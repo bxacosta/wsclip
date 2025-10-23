@@ -9,10 +9,14 @@ from typing import Optional
 import click
 import requests
 from rich.prompt import Prompt
+from rich.table import Table
 
 from .core.websocket_client import WebSocketClient
+from .core.clipboard_manager import ClipboardManager
+from .core.hotkey_handler import HotkeyHandler
 from .models.config import AppConfig, ProxyConfig
-from .utils.logger import console, print_info, print_success, print_error
+from .models.message import ClipboardTextMessage
+from .utils.logger import console, print_info, print_success, print_error, print_warning
 from .constants import DEFAULT_WORKER_URL
 
 
@@ -33,22 +37,28 @@ def get_or_generate_peer_id(config: AppConfig) -> str:
 
 
 @click.group()
-@click.version_option(version="1.0.0-phase1")
+@click.version_option(version="0.0.2")
 def cli() -> None:
     """
     WSClip - WebSocket Clipboard Sync
 
-    Phase 1: Text message relay between peers
+    Phase 2: Real clipboard synchronization between peers
     """
     pass
 
 
 @cli.command()
-@click.option('--worker-url', default=None, help='Cloudflare Worker URL')
+@click.option('--mode', type=click.Choice(['auto', 'manual']), default='manual', help='Clipboard sync mode')
+@click.option('--token', default=None, help='Pairing token (optional)')
 @click.option('--config', default='config.yaml', help='Config file path')
-def pair(worker_url: Optional[str], config: str) -> None:
+def start(mode: str, token: Optional[str], config: str) -> None:
     """
-    Generate a new pairing token and wait for peer to connect
+    Start clipboard sync with specified mode (Phase 2)
+
+    Token precedence:
+    1. --token parameter → use and save to config
+    2. config.yaml token → use that
+    3. None → generate new token and save to config
     """
     # Load or create config
     config_path = Path(config)
@@ -57,166 +67,180 @@ def pair(worker_url: Optional[str], config: str) -> None:
         app_config = AppConfig.from_yaml(config)
     else:
         # Create default config
-        worker_url_value = worker_url or DEFAULT_WORKER_URL
         app_config = AppConfig(
-            worker_url=worker_url_value,
+            worker_url=DEFAULT_WORKER_URL,
             peer_id='',
-            proxy=ProxyConfig()
+            proxy=ProxyConfig(),
+            mode=mode
         )
+
+    # Token resolution with precedence
+    if token:
+        # Priority 1: --token parameter
+        app_config.token = token
+        app_config.to_yaml(config)  # Save to config
+    elif not app_config.token:
+        # Priority 3: Generate new token
+        console.print("[cyan]Generating new token...[/cyan]")
+        api_url = app_config.worker_url.replace('wss://', 'https://').replace('/ws', '')
+        try:
+            response = requests.get(f"{api_url}/api/generate-token", timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            app_config.token = data['token']
+            app_config.to_yaml(config)  # Save to config
+
+            console.print()
+            console.print("━" * 50, style="green")
+            console.print(f"  Generated Token: [bold green]{app_config.token}[/bold green]", justify="center")
+            console.print("━" * 50, style="green")
+            console.print()
+            console.print("Share this token with the other peer:")
+            console.print(f"  [dim]wsclip start --mode {mode} --token {app_config.token}[/dim]")
+            console.print()
+        except requests.RequestException as e:
+            print_error(f"Failed to generate token: {e}")
+            sys.exit(1)
+    # else: Priority 2: use token from config.yaml
 
     # Generate peer_id if not defined
     app_config.peer_id = get_or_generate_peer_id(app_config)
+    app_config.mode = mode
 
-    # Generate token from Worker
-    console.print("[cyan]Generating pairing token...[/cyan]")
-
+    # Start clipboard sync
     try:
-        # Call Worker API to generate token
-        api_url = app_config.worker_url.replace('wss://', 'https://').replace('/ws', '')
-        response = requests.get(f"{api_url}/api/generate-token", timeout=10)
-        response.raise_for_status()
-
-        data = response.json()
-        token = data['token']
-
-        app_config.token = token
-
-        # Save config
-        app_config.to_yaml(config)
-
-        # Display token
-        console.print()
-        console.print("━" * 50, style="green")
-        console.print(f"  Pairing Token: [bold green]{token}[/bold green]", justify="center")
-        console.print("━" * 50, style="green")
-        console.print()
-        console.print(f"Share this token with the other peer:")
-        console.print(f"  [dim]wsclip connect {token}[/dim]")
-        console.print()
-
-        # Start WebSocket client
-        asyncio.run(_run_client(app_config))
-
-    except requests.RequestException as e:
-        print_error(f"Failed to generate token: {e}")
-        sys.exit(1)
+        asyncio.run(_run_clipboard_sync(app_config))
     except KeyboardInterrupt:
         print_info("Interrupted by user")
         sys.exit(0)
 
 
 @cli.command()
-@click.argument('token')
-@click.option('--worker-url', default=None, help='Cloudflare Worker URL')
 @click.option('--config', default='config.yaml', help='Config file path')
-def connect(token: str, worker_url: Optional[str], config: str) -> None:
+def status(config: str) -> None:
     """
-    Connect to a peer using their pairing token
+    Show connection status and configuration
     """
-    # Load or create config
     config_path = Path(config)
 
-    if config_path.exists():
-        app_config = AppConfig.from_yaml(config)
-    else:
-        worker_url_value = worker_url or DEFAULT_WORKER_URL
-        app_config = AppConfig(
-            worker_url=worker_url_value,
-            peer_id='',
-            proxy=ProxyConfig()
-        )
+    if not config_path.exists():
+        print_error(f"Config file not found: {config}")
+        print_info("Run 'wsclip init' to create a configuration file")
+        return
 
-    # Generate peer_id if not defined
-    app_config.peer_id = get_or_generate_peer_id(app_config)
+    # Load config
+    app_config = AppConfig.from_yaml(config)
 
-    # Set token
-    app_config.token = token
+    # Display status table
+    table = Table(title="WSClip Status")
+    table.add_column("Property", style="cyan")
+    table.add_column("Value", style="green")
 
-    # Save config
-    app_config.to_yaml(config)
+    table.add_row("Mode", app_config.mode)
+    table.add_row("Hotkey", app_config.hotkey if app_config.mode == 'manual' else 'N/A')
+    table.add_row("Worker URL", app_config.worker_url)
+    table.add_row("Peer ID", app_config.peer_id if app_config.peer_id else '[dim]auto-generated[/dim]')
+    table.add_row("Token", app_config.token if app_config.token else '[dim]not set[/dim]')
+    table.add_row("Auto-reconnect", "Enabled" if app_config.enable_reconnect else "Disabled")
+    table.add_row("Poll Interval", f"{app_config.clipboard_poll_interval}s")
+    table.add_row("Max Size", f"{app_config.clipboard_max_size_mb}MB")
 
-    console.print(f"[cyan]Connecting with token: {token}[/cyan]")
-
-    try:
-        asyncio.run(_run_client(app_config))
-    except KeyboardInterrupt:
-        print_info("Interrupted by user")
-        sys.exit(0)
+    console.print(table)
 
 
-async def _run_client(config: AppConfig) -> None:
+async def _run_clipboard_sync(config: AppConfig) -> None:
     """
-    Run the WebSocket client with interactive message sending
+    Run clipboard sync (Phase 2)
+    Replaces _run_client from Phase 1
     """
-    # Create client
+    # Create WebSocket client
     client = WebSocketClient(
         worker_url=config.worker_url,
         token=config.token,
         peer_id=config.peer_id,
-        log_level=config.log_level
+        log_level=config.log_level,
+        enable_reconnect=config.enable_reconnect
     )
 
-    # Connect
-    connected = await client.connect()
+    # Create clipboard manager
+    clipboard_mgr = ClipboardManager(
+        poll_interval=config.clipboard_poll_interval,
+        max_size_bytes=config.clipboard_max_size_mb * 1024 * 1024
+    )
 
+    # Initialize hotkey_handler to None (for cleanup)
+    hotkey_handler = None
+
+    # Register clipboard receive handler
+    async def on_clipboard_received(msg: ClipboardTextMessage) -> None:
+        success = clipboard_mgr.set_clipboard_text(msg.content)
+        if success:
+            print_success(f"Received clipboard from {msg.from_peer} ({msg.source}): {len(msg.content)} chars")
+        else:
+            print_error("Failed to write clipboard")
+
+    client.register_handler('clipboard_text', on_clipboard_received)
+
+    # Connect
+    connected = await client.connect_with_retry()
     if not connected:
         print_error("Failed to connect")
         return
 
-    # Create tasks
-    listen_task = asyncio.create_task(client.listen())
-    input_task = asyncio.create_task(_input_loop(client))
-
-    # Wait for either task to complete
+    # Mode-specific setup
     try:
-        await asyncio.gather(listen_task, input_task)
-    except Exception as e:
-        print_error(f"Error: {e}")
+        if config.mode == 'auto':
+            # Auto mode: monitor clipboard
+            print_info("Auto mode: monitoring clipboard...")
+
+            async def on_clipboard_change(content: str) -> None:
+                await client.send_clipboard(content, source='auto')
+                print_success(f"Sent clipboard: {len(content)} chars")
+
+            await clipboard_mgr.start_monitoring(on_clipboard_change)
+
+        elif config.mode == 'manual':
+            # Manual mode: hotkey handler
+            print_info(f"Manual mode: press {config.hotkey} to send clipboard")
+
+            hotkey_handler = HotkeyHandler(config.log_level)
+
+            async def send_current_clipboard() -> None:
+                content = clipboard_mgr.get_clipboard_text()
+                if content:
+                    await client.send_clipboard(content, source='manual')
+                    print_success(f"Sent clipboard: {len(content)} chars")
+                else:
+                    print_warning("Clipboard is empty")
+
+            hotkey_handler.register_hotkey(config.hotkey, send_current_clipboard)
+            await hotkey_handler.start()
+
+        # Maintain connection
+        await client.maintain_connection()
+
+    except (KeyboardInterrupt, asyncio.CancelledError):
+        # Graceful shutdown on Ctrl+C
+        pass
     finally:
+        # Cleanup
+        if config.mode == 'auto':
+            await clipboard_mgr.stop_monitoring()
+        elif config.mode == 'manual' and hotkey_handler:
+            hotkey_handler.stop()
         await client.disconnect()
-
-
-async def _input_loop(client: WebSocketClient) -> None:
-    """
-    Interactive input loop for sending messages
-    Runs in background while listening
-    """
-    loop = asyncio.get_event_loop()
-
-    console.print()
-    console.print("[dim]Type a message and press Enter to send (or 'quit' to exit)[/dim]")
-    console.print()
-
-    while True:
-        try:
-            # Run input in executor to avoid blocking
-            message = await loop.run_in_executor(
-                None,
-                lambda: Prompt.ask("[bold cyan]>[/bold cyan]")
-            )
-
-            if message.lower() in ['quit', 'exit', 'q']:
-                print_info("Exiting...")
-                break
-
-            if message.strip():
-                await client.send_text(message)
-
-        except EOFError:
-            break
-        except Exception as e:
-            print_error(f"Input error: {e}")
 
 
 @cli.command()
 def init() -> None:
     """
-    Create a default configuration file
+    Create a default configuration file with Phase 2 fields
     """
-    config_path = Path('config.yaml')
+    config_filename = 'config.yaml'
+    config_path = Path(config_filename)
 
     if config_path.exists():
-        if not click.confirm('Config file already exists. Overwrite?'):
+        if not click.confirm(f'{config_filename} already exists. Overwrite?'):
             return
 
     # Prompt for Worker URL
@@ -225,16 +249,23 @@ def init() -> None:
         default=DEFAULT_WORKER_URL
     )
 
-    # Create config
+    # Create config with Phase 2 defaults
     config = AppConfig(
         worker_url=worker_url,
-        peer_id='peer_a',
-        proxy=ProxyConfig()
+        peer_id='',  # Will be auto-generated
+        proxy=ProxyConfig(),
+        mode='manual',
+        hotkey='<ctrl>+<shift>+c',
+        clipboard_poll_interval=0.5,
+        clipboard_max_size_mb=1,
+        enable_reconnect=True,
+        reconnect_max_attempts=10
     )
 
-    config.to_yaml('config.yaml')
+    config.to_yaml(config_filename)
 
-    print_success(f"Configuration saved to {config_path}")
+    print_success(f"Configuration saved to {config_filename}")
+    console.print("\n[dim]You can now use 'wsclip start --mode auto' or 'wsclip start --mode manual'[/dim]")
 
 
 if __name__ == '__main__':
