@@ -138,9 +138,11 @@ class WebSocketClient:
 
         if self.websocket:
             try:
-                await self.websocket.close()
-            except Exception as e:
-                self.logger.debug(f"Error closing WebSocket: {e}")
+                # Try to close gracefully with timeout
+                await asyncio.wait_for(self.websocket.close(), timeout=2.0)
+            except (Exception, asyncio.TimeoutError, asyncio.CancelledError):
+                # Ignore all errors during disconnect (including timeout and cancellation)
+                pass
             finally:
                 self.websocket = None
 
@@ -177,7 +179,6 @@ class WebSocketClient:
             print_error("Not authenticated, cannot listen")
             return
 
-        self._running = True
         print_info("Listening for messages... (Ctrl+C to stop)")
 
         try:
@@ -188,16 +189,14 @@ class WebSocketClient:
                     await self._handle_message(msg)
 
         except (KeyboardInterrupt, asyncio.CancelledError):
-            # Graceful shutdown
-            pass
+            # Graceful shutdown - signal to stop
+            self._running = False
         except WebSocketException as e:
             self.logger.error(f"WebSocket error: {e}")
             print_error(f"Connection lost: {e}")
         except Exception as e:
             self.logger.error(f"Error in listen loop: {e}")
             print_error(f"Unexpected error: {e}")
-        finally:
-            self._running = False
 
     def register_handler(self, message_type: str, handler: MessageHandler) -> None:
         """
@@ -306,7 +305,9 @@ class WebSocketClient:
         Maintain connection with auto-reconnect (Phase 2)
         Runs in background, reconnects on disconnect
         """
-        while self.enable_reconnect:
+        self._running = True
+
+        while self.enable_reconnect and self._running:
             try:
                 # Only connect if not already connected
                 if not self.authenticated or not self.websocket:

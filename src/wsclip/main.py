@@ -107,11 +107,29 @@ def start(mode: str, token: Optional[str], config: str) -> None:
     app_config.peer_id = get_or_generate_peer_id(app_config)
     app_config.mode = mode
 
-    # Start clipboard sync
+    # Start clipboard sync with proper cleanup
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    interrupted = False
     try:
-        asyncio.run(_run_clipboard_sync(app_config))
+        loop.run_until_complete(_run_clipboard_sync(app_config))
     except KeyboardInterrupt:
-        print_info("Interrupted by user")
+        interrupted = True
+    finally:
+        # Cancel all pending tasks
+        pending = asyncio.all_tasks(loop)
+        for task in pending:
+            task.cancel()
+
+        # Wait for all tasks to complete cancellation
+        if pending:
+            loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+
+        loop.close()
+
+        if interrupted:
+            print_info("Interrupted by user")
         sys.exit(0)
 
 
@@ -223,12 +241,16 @@ async def _run_clipboard_sync(config: AppConfig) -> None:
         # Graceful shutdown on Ctrl+C
         pass
     finally:
-        # Cleanup
-        if config.mode == 'auto':
-            await clipboard_mgr.stop_monitoring()
-        elif config.mode == 'manual' and hotkey_handler:
-            hotkey_handler.stop()
-        await client.disconnect()
+        # Cleanup with error handling
+        try:
+            if config.mode == 'auto':
+                await clipboard_mgr.stop_monitoring()
+            elif config.mode == 'manual' and hotkey_handler:
+                hotkey_handler.stop()
+            await client.disconnect()
+        except Exception as e:
+            # Ignore cleanup errors during shutdown
+            pass
 
 
 @cli.command()
@@ -255,7 +277,7 @@ def init() -> None:
         peer_id='',  # Will be auto-generated
         proxy=ProxyConfig(),
         mode='manual',
-        hotkey='<ctrl>+<shift>+c',
+        hotkey='<alt>+<shift>+<return>',
         clipboard_poll_interval=0.5,
         clipboard_max_size_mb=1,
         enable_reconnect=True,
