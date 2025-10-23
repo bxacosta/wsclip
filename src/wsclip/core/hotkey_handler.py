@@ -24,6 +24,7 @@ class HotkeyHandler:
         self._listener: Optional[keyboard.GlobalHotKeys] = None
         self._hotkey_map: dict[str, Callable[[], Awaitable[None]]] = {}
         self._running = False
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
 
     def register_hotkey(
         self,
@@ -42,8 +43,11 @@ class HotkeyHandler:
 
         # Create sync wrapper for pynput
         def sync_callback():
-            # Schedule async callback in event loop
-            asyncio.create_task(callback())
+            # Schedule async callback in event loop from different thread
+            if self._loop and self._loop.is_running():
+                asyncio.run_coroutine_threadsafe(callback(), self._loop)
+            else:
+                self.logger.error("Event loop not running, cannot execute hotkey callback")
 
         # Register with pynput
         if self._listener:
@@ -57,6 +61,9 @@ class HotkeyHandler:
         """Start listening for hotkeys"""
         if self._running or not self._listener:
             return
+
+        # Store reference to current event loop
+        self._loop = asyncio.get_running_loop()
 
         self._running = True
         self._listener.start()
