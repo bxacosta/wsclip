@@ -38,7 +38,7 @@ class AppConfig:
 
     # Phase 2: Clipboard mode
     mode: Literal['auto', 'manual'] = 'manual'
-    hotkey: str = '<ctrl>+<shift>+c'
+    hotkey: str = '<alt>+<shift>+<return>'
     clipboard_poll_interval: float = 0.5
     clipboard_max_size_mb: int = 1
 
@@ -69,7 +69,7 @@ class AppConfig:
             log_level=data.get('log_level', 'INFO'),
             # Phase 2 fields
             mode=data.get('mode', 'manual'),
-            hotkey=data.get('hotkey', '<ctrl>+<shift>+c'),
+            hotkey=data.get('hotkey', '<alt>+<shift>+<return>'),
             clipboard_poll_interval=data.get('clipboard_poll_interval', 0.5),
             clipboard_max_size_mb=data.get('clipboard_max_size_mb', 1),
             enable_reconnect=data.get('enable_reconnect', True),

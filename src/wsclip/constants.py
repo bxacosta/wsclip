@@ -22,7 +22,7 @@ DEFAULT_LOG_LEVEL = "INFO"
 # Phase 2: Clipboard settings
 CLIPBOARD_POLL_INTERVAL = 0.5  # seconds between clipboard checks
 CLIPBOARD_MAX_SIZE = 1048576   # 1 MB max clipboard content
-DEFAULT_HOTKEY = "<ctrl>+<shift>+c"  # Default hotkey for manual mode
+DEFAULT_HOTKEY = "<alt>+<shift>+<return>"  # Default hotkey for manual mode
 
 # Phase 2: Reconnection settings
 RECONNECT_INITIAL_DELAY = 1.0  # seconds
