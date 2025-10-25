@@ -53,24 +53,24 @@ def setup_logger(name: str, level: str = "INFO") -> logging.Logger:
 
 def print_message(from_peer: str, content: str) -> None:
     """Print a received message with nice formatting."""
-    console.print(f"[peer]◀ {from_peer}[/peer]: [message]{content}[/message]")
+    console.print(f"[peer]{from_peer}[/peer]: [message]{content}[/message]")
 
 
 def print_info(message: str) -> None:
     """Print info message."""
-    console.print(f"[info]ℹ {message}[/info]")
+    console.print(f"[info]{message}[/info]")
 
 
 def print_success(message: str) -> None:
     """Print success message."""
-    console.print(f"[success]✓ {message}[/success]")
+    console.print(f"[success]{message}[/success]")
 
 
 def print_warning(message: str) -> None:
     """Print warning message."""
-    console.print(f"[warning]⚠ {message}[/warning]")
+    console.print(f"[warning]{message}[/warning]")
 
 
 def print_error(message: str) -> None:
     """Print error message."""
-    console.print(f"[error]✗ {message}[/error]")
+    console.print(f"[error]{message}[/error]")

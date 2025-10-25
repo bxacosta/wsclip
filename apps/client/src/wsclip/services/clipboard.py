@@ -82,7 +82,11 @@ class ClipboardService:
             return True
 
         # Ignore if content too large
-        if len(content.encode('utf-8')) > self.max_size_bytes:
+        content_bytes = len(content.encode('utf-8'))
+        if content_bytes > self.max_size_bytes:
+            size_mb = content_bytes / (1024 * 1024)
+            max_mb = self.max_size_bytes / (1024 * 1024)
+            self.logger.error(f"Clipboard content too large: {size_mb:.2f}MB (maximum: {max_mb:.1f}MB)")
             return True
 
         # Ignore if same as last seen

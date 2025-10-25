@@ -12,6 +12,7 @@ dependencies = [
     "requests>=2.31.0",
     "pyperclip>=1.11.0",
     "pynput>=1.8.1",
+    "python-socks[asyncio]>=2.7.2",
 ]
 
 [project.scripts]

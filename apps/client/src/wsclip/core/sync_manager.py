@@ -29,7 +29,8 @@ class SyncManager:
             worker_url=config.worker_url,
             token=config.token,
             peer_id=config.peer_id,
-            log_level=config.log_level
+            log_level=config.log_level,
+            proxy=config.proxy
         )
         
         self.clipboard_service = ClipboardService(

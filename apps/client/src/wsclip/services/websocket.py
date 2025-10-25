@@ -5,9 +5,15 @@ import asyncio
 import json
 import uuid
 from collections.abc import Callable, Awaitable
+from urllib.parse import urlparse
+
+from python_socks.async_.asyncio import Proxy
 from websockets.client import connect, WebSocketClientProtocol
 from websockets.exceptions import WebSocketException, ConnectionClosed
 
+from ..config.constants import WS_CONNECT_TIMEOUT, WS_PING_INTERVAL, WS_PING_TIMEOUT, WS_HEARTBEAT_INTERVAL
+from ..config.settings import Settings
+from ..models.config import ProxyConfig
 from ..models.messages import (
     AuthMessage,
     AuthResponseMessage,
@@ -21,9 +27,6 @@ from ..models.messages import (
     dict_to_message,
 )
 from ..utils.logger import setup_logger, print_message, print_info, print_warning, print_error, print_success
-from ..config.constants import WS_CONNECT_TIMEOUT, WS_PING_INTERVAL, WS_PING_TIMEOUT, WS_HEARTBEAT_INTERVAL
-from ..config.settings import Settings
-
 
 # Type alias for message handler
 MessageHandler = Callable[[BaseMessage], Awaitable[None]]
@@ -33,11 +36,12 @@ class WebSocketService:
     """WebSocket client for peer-to-peer communication via relay server."""
 
     def __init__(
-        self,
-        worker_url: str,
-        token: str,
-        peer_id: str,
-        log_level: str = "INFO"
+            self,
+            worker_url: str,
+            token: str,
+            peer_id: str,
+            log_level: str = "INFO",
+            proxy: ProxyConfig | None = None
     ):
         """
         Initialize WebSocket service.
@@ -47,10 +51,12 @@ class WebSocketService:
             token: Pairing token
             peer_id: This peer's unique identifier
             log_level: Logging level
+            proxy: Optional proxy configuration
         """
         self.worker_url = worker_url
         self.token = token
         self.peer_id = peer_id
+        self.proxy = proxy
         self.logger = setup_logger(f"ws_service.{peer_id}", log_level)
 
         self.websocket: WebSocketClientProtocol | None = None
@@ -80,14 +86,47 @@ class WebSocketService:
 
             self.logger.info(f"Connecting to {self.worker_url}...")
 
-            # Connect with ping settings
-            self.websocket = await connect(
-                ws_url,
-                ping_interval=WS_PING_INTERVAL,
-                ping_timeout=WS_PING_TIMEOUT,
-                open_timeout=WS_CONNECT_TIMEOUT,
-                close_timeout=None,  # No timeout for closing handshake
-            )
+            # Parse URL to get destination host and port
+            parsed_url = urlparse(self.worker_url)
+            dest_host = parsed_url.hostname
+            dest_port = parsed_url.port or (443 if parsed_url.scheme == 'wss' else 80)
+
+            # Prepare connection parameters
+            connect_params = {
+                'ping_interval': WS_PING_INTERVAL,
+                'ping_timeout': WS_PING_TIMEOUT,
+                'open_timeout': WS_CONNECT_TIMEOUT,
+                'close_timeout': None,  # No timeout for closing handshake
+            }
+
+            # Connect via SOCKS5 proxy if enabled
+            if self.proxy and self.proxy.enabled:
+                try:
+                    self.logger.info(f"Connecting via SOCKS5 proxy {self.proxy.host}:{self.proxy.port}...")
+
+                    # Build proxy URL
+                    if self.proxy.username and self.proxy.password:
+                        proxy_url = f"socks5://{self.proxy.username}:{self.proxy.password}@{self.proxy.host}:{self.proxy.port}"
+                    else:
+                        proxy_url = f"socks5://{self.proxy.host}:{self.proxy.port}"
+
+                    # Create proxy connection
+                    proxy = Proxy.from_url(proxy_url)
+                    proxy_sock = await proxy.connect(dest=dest_host, port=dest_port)
+
+                    # Connect WebSocket through proxy socket
+                    connect_params['sock'] = proxy_sock
+                    self.websocket = await connect(ws_url, **connect_params)
+
+                except ConnectionRefusedError:
+                    print_error(f"SOCKS5 proxy at {self.proxy.host}:{self.proxy.port} not responding")
+                    return False
+                except Exception as e:
+                    print_error(f"Proxy connection failed: {e}")
+                    return False
+            else:
+                # Direct connection (no proxy)
+                self.websocket = await connect(ws_url, **connect_params)
 
             self.logger.info("WebSocket connected, authenticating...")
 
@@ -210,10 +249,10 @@ class WebSocketService:
 
         try:
             self._running = True
-            
+
             # Start heartbeat task
             self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
-            
+
             while self._running and self.websocket:
                 msg = await self._receive_message()
 

@@ -9,9 +9,9 @@ class Settings:
 
     # WebSocket
     WS_CONNECT_TIMEOUT = 10.0  # seconds
-    WS_PING_INTERVAL = 5.0     # seconds (must be < Cloudflare's ~10s inactivity timeout)
-    WS_PING_TIMEOUT = 5.0      # seconds
-    WS_HEARTBEAT_INTERVAL = 15.0  # seconds (send heartbeat to keep Durable Object alive)
+    WS_PING_INTERVAL = 30.0    # seconds (prevent connection hibernation)
+    WS_PING_TIMEOUT = 10.0     # seconds
+    WS_HEARTBEAT_INTERVAL = 30.0  # seconds (send heartbeat to keep Durable Object alive)
 
     # Clipboard
     CLIPBOARD_POLL_INTERVAL = 1.0  # seconds
