@@ -1,0 +1,21 @@
+{
+  "name": "clipboard-sync-relay",
+  "version": "0.0.1",
+  "type": "module",
+  "description": "WebSocket clipboard sync relay using Cloudflare Workers",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "wrangler types && wrangler dev",
+    "deploy": "wrangler types && wrangler deploy --minify",
+    "tail": "wrangler tail",
+    "types": "wrangler types"
+  },
+  "packageManager": "pnpm@10.15.0",
+  "dependencies": {
+    "hono": "^4.10.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "wrangler": "^4.45.0"
+  }
+}
