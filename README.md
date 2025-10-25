@@ -1,6 +1,6 @@
 # WSClip
 
-WebSocket-based clipboard synchronization for P2P communication via Cloudflare Workers.
+Real-time peer-to-peer clipboard synchronization over WebSocket.
 
 ## Monorepo Structure
 
@@ -10,8 +10,6 @@ wsclip/
 │   ├── client/          # Python client application
 │   └── relay/           # Cloudflare Worker relay server
 │
-├── docs/                # Documentation
-├── config.yaml          # User configuration
 ├── README.md
 └── LICENSE
 ```
@@ -46,11 +44,13 @@ See individual README files in `apps/client/` and `apps/relay/` for detailed ins
 ## Requirements
 
 **Server:**
+
 - Node.js 22+
 - pnpm 10+
 - Cloudflare account with Workers enabled
 
 **Client:**
+
 - Python 3.12+
 - uv package manager
 
