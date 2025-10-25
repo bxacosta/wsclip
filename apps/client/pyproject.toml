@@ -20,3 +20,8 @@ wsclip = "wsclip.cli.app:cli"
 [build-system]
 requires = ["setuptools>=80.0"]
 build-backend = "setuptools.build_meta"
+
+[dependency-groups]
+dev = [
+    "pyinstaller>=6.16.0",
+]
