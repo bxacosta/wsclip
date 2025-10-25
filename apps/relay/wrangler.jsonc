@@ -1,32 +1,23 @@
 {
+  "$schema": "node_modules/wrangler/config-schema.json",
   "name": "clipboard-sync-relay",
   "main": "src/index.ts",
-  "compatibility_date": "2024-10-22",
-
-  // Durable Objects binding
+  "compatibility_date": "2025-10-24",
+  // Durable Objects bindings
   "durable_objects": {
     "bindings": [
       {
         "name": "CLIPBOARD_SESSION",
-        "class_name": "SessionDurableObject",
-        "script_name": "clipboard-sync-relay"
+        "class_name": "SessionDurableObject"
       }
     ]
   },
-
   // Durable Objects migrations
   "migrations": [
     {
       "tag": "v1",
-      "new_sqlite_classes": ["ClipboardSession"]
-    },
-    {
-      "tag": "v2",
-      "renamed_classes": [
-        {
-          "from": "ClipboardSession",
-          "to": "SessionDurableObject"
-        }
+      "new_sqlite_classes": [
+        "SessionDurableObject"
       ]
     }
   ]
