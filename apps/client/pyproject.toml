@@ -1,0 +1,22 @@
+[project]
+name = "wsclip"
+version = "0.0.2"
+description = "WebSocket-based clipboard sync for P2P communication"
+requires-python = ">=3.12"
+dependencies = [
+    "websockets>=11.0",
+    "click>=8.1.0",
+    "rich>=13.0.0",
+    "pyyaml>=6.0",
+    "python-dotenv>=1.0",
+    "requests>=2.31.0",
+    "pyperclip>=1.11.0",
+    "pynput>=1.8.1",
+]
+
+[project.scripts]
+wsclip = "wsclip.cli.app:cli"
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"

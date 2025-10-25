@@ -1,6 +1,41 @@
 # WSClip
 
-Real-time peer-to-peer clipboard synchronization over WebSocket.
+WebSocket-based clipboard synchronization for P2P communication via Cloudflare Workers.
+
+## Monorepo Structure
+
+```
+wsclip/
+├── apps/
+│   ├── client/          # Python client application
+│   └── relay/           # Cloudflare Worker relay server
+│
+├── docs/                # Documentation
+├── config.yaml          # User configuration
+├── README.md
+└── LICENSE
+```
+
+## Quick Start
+
+### Client
+
+```bash
+cd apps/client
+uv pip install -e .
+wsclip init
+wsclip start --mode auto
+```
+
+### Relay
+
+```bash
+cd apps/relay
+pnpm install
+pnpm dev
+```
+
+See individual README files in `apps/client/` and `apps/relay/` for detailed instructions
 
 ## Features
 
