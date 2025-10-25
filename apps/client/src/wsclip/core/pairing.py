@@ -18,7 +18,7 @@ class PairingManager:
             config: Application configuration
         """
         self.config = config
-        self.api_url = config.worker_url.replace('wss://', 'https://').replace('/ws', '')
+        self.api_url = config.connection.worker_url.replace('wss://', 'https://').replace('/ws', '')
 
     def generate_token(self) -> str | None:
         """
@@ -32,18 +32,18 @@ class PairingManager:
             response.raise_for_status()
             data = response.json()
             token = data['token']
-            
+
             # Save to config
-            self.config.token = token
+            self.config.connection.token = token
             self.config.save()
-            
+
             print_success(f"Generated token: {token}")
             return token
         except requests.RequestException as e:
             print_error(f"Failed to generate token: {e}")
             return None
 
-    def join_with_token(self, token: str, config_path: str = 'config.yaml') -> bool:
+    def join_with_token(self, token: str, config_path: str) -> bool:
         """
         Join a session with an existing token.
 
@@ -55,8 +55,8 @@ class PairingManager:
             True if successful
         """
         try:
-            self.config.token = token
-            self.config.to_yaml(config_path)
+            self.config.connection.token = token
+            self.config.save(config_path)
             print_success(f"Joined with token: {token}")
             return True
         except Exception as e:

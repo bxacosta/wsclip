@@ -16,7 +16,7 @@ Thumbs.db
 **/.env*
 !**/.env*.example
 **/config.yaml
-
+!**/wsclip.spec
 
 # LLM
 .specs/done

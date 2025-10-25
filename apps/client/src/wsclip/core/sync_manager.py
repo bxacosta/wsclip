@@ -3,13 +3,13 @@ from __future__ import annotations
 
 import asyncio
 
-from ..services.websocket import WebSocketService
-from ..services.clipboard import ClipboardService
-from ..services.hotkeys import HotkeyService
+from ..core.connection import ReconnectionStrategy
 from ..models.config import AppConfig
 from ..models.messages import ClipboardTextMessage
+from ..services.clipboard import ClipboardService
+from ..services.hotkeys import HotkeyService
+from ..services.websocket import WebSocketService
 from ..utils.logger import print_info, print_success, print_warning, print_error
-from ..core.connection import ReconnectionStrategy
 
 
 class SyncManager:
@@ -26,16 +26,16 @@ class SyncManager:
 
         # Services
         self.ws_service = WebSocketService(
-            worker_url=config.worker_url,
-            token=config.token,
-            peer_id=config.peer_id,
-            log_level=config.log_level,
+            worker_url=config.connection.worker_url,
+            token=config.connection.token,
+            peer_id=config.connection.peer_id,
+            log_level=config.logging.level,
             proxy=config.proxy
         )
-        
+
         self.clipboard_service = ClipboardService(
-            poll_interval=config.clipboard_poll_interval,
-            max_size_bytes=config.clipboard_max_size_mb * 1024 * 1024
+            poll_interval=config.clipboard.poll_interval,
+            max_size_bytes=config.clipboard.max_size_mb * 1024 * 1024
         )
 
         self.hotkey_service: HotkeyService | None = None
@@ -44,17 +44,17 @@ class SyncManager:
         self.ws_service.register_handler('clipboard_text', self._on_clipboard_received)
 
     @classmethod
-    def from_config(cls, config_path: str = 'config.yaml') -> 'SyncManager':
+    def from_config(cls, config_path: str | None = None) -> 'SyncManager':
         """
         Create SyncManager from config file.
 
         Args:
-            config_path: Path to configuration file
+            config_path: Path to configuration file (default: XDG config path)
 
         Returns:
             Initialized SyncManager instance
         """
-        config = AppConfig.from_yaml(config_path)
+        config = AppConfig.from_json(config_path)
         return cls(config)
 
     async def start(self, mode: str | None = None) -> None:
@@ -65,7 +65,7 @@ class SyncManager:
             mode: Sync mode ('auto' or 'manual'), uses config if not provided
         """
         if mode:
-            self.config.mode = mode
+            self.config.clipboard.mode = mode
 
         # Connect with retry
         connected = await self._connect_with_retry()
@@ -74,9 +74,9 @@ class SyncManager:
             return
 
         # Start mode-specific sync
-        if self.config.mode == 'auto':
+        if self.config.clipboard.mode == 'auto':
             await self._start_auto_mode()
-        elif self.config.mode == 'manual':
+        elif self.config.clipboard.mode == 'manual':
             await self._start_manual_mode()
 
     async def _connect_with_retry(self) -> bool:
@@ -87,12 +87,12 @@ class SyncManager:
             True if connected successfully, False otherwise
         """
         # Direct connection if reconnect disabled
-        if not self.config.enable_reconnect:
+        if not self.config.connection.reconnect.enabled:
             return await self.ws_service.connect()
 
         # Connect with retry strategy
         reconnect_strategy = ReconnectionStrategy(
-            max_attempts=self.config.reconnect_max_attempts
+            max_attempts=self.config.connection.reconnect.max_attempts
         )
         return await reconnect_strategy.connect_with_retry(
             self.ws_service.connect
@@ -101,9 +101,9 @@ class SyncManager:
     async def stop(self) -> None:
         """Stop clipboard synchronization."""
         try:
-            if self.config.mode == 'auto':
+            if self.config.clipboard.mode == 'auto':
                 await self.clipboard_service.stop_monitoring()
-            elif self.config.mode == 'manual' and self.hotkey_service:
+            elif self.config.clipboard.mode == 'manual' and self.hotkey_service:
                 self.hotkey_service.stop()
 
             await self.ws_service.disconnect()
@@ -123,9 +123,9 @@ class SyncManager:
 
     async def _start_manual_mode(self) -> None:
         """Start manual hotkey mode."""
-        print_info(f"Manual mode: press {self.config.hotkey} to send clipboard")
+        print_info(f"Manual mode: press {self.config.clipboard.hotkey} to send clipboard")
 
-        self.hotkey_service = HotkeyService(self.config.log_level)
+        self.hotkey_service = HotkeyService(self.config.logging.level)
 
         async def send_current_clipboard() -> None:
             content = self.clipboard_service.get()
@@ -138,9 +138,9 @@ class SyncManager:
         # Start hotkey registration in background to avoid blocking
         async def setup_hotkeys() -> None:
             try:
-                await self.hotkey_service.register(self.config.hotkey, send_current_clipboard)
+                await self.hotkey_service.register(self.config.clipboard.hotkey, send_current_clipboard)
                 await self.hotkey_service.start()
-                print_success(f"Hotkey {self.config.hotkey} is ready!")
+                print_success(f"Hotkey {self.config.clipboard.hotkey} is ready!")
             except Exception as e:
                 print_error(f"Hotkey setup failed: {e}")
                 raise
@@ -158,7 +158,7 @@ class SyncManager:
     async def _maintain_connection(self) -> None:
         """Maintain WebSocket connection and listen for messages."""
         try:
-            await self.ws_service.receive_loop(self.config.mode)
+            await self.ws_service.receive_loop(self.config.clipboard.mode)
         except (KeyboardInterrupt, asyncio.CancelledError):
             pass
 

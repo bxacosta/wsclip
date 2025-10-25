@@ -4,6 +4,10 @@
 class Settings:
     """Application settings with default values."""
 
+    # Configuration
+    CONFIG_DIR_NAME = "wsclip"
+    CONFIG_FILE_NAME = "config.json"
+
     # Worker
     DEFAULT_WORKER_URL = "wss://clipboard-sync-relay.your-subdomain.workers.dev"
 
