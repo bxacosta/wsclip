@@ -3,6 +3,9 @@
 .idea/
 *.swp
 *.swo
+*.iws
+*.iml
+*.ipr
 *~
 
 # OS
@@ -10,5 +13,10 @@
 Thumbs.db
 
 # Configuration
-config.yaml
-.env
+**/.env*
+!**/.env*.example
+**/config.yaml
+
+
+# LLM
+.specs/done
