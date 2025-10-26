@@ -16,7 +16,7 @@ ERR_ALREADY_CONNECTED = 'ALREADY_CONNECTED'
 ERR_INTERNAL_ERROR = 'INTERNAL_ERROR'
 
 # WebSocket connection settings (imported from settings)
-from .settings import Settings
+from wsclip.config.settings import Settings
 
 WS_CONNECT_TIMEOUT = Settings.WS_CONNECT_TIMEOUT
 WS_PING_INTERVAL = Settings.WS_PING_INTERVAL

@@ -8,13 +8,13 @@ import click
 from rich.prompt import Prompt
 from rich.table import Table
 
-from ..core.sync_manager import SyncManager
-from ..core.pairing import PairingManager
-from ..models.config import AppConfig, ConnectionConfig, ClipboardConfig, ProxyConfig, LoggingConfig
-from ..utils.logger import console, print_info, print_success, print_error
-from ..utils.helpers import generate_peer_id
-from ..utils.paths import get_config_file, ensure_config_dir
-from ..config.settings import Settings
+from wsclip.core.sync_manager import SyncManager
+from wsclip.core.pairing import PairingManager
+from wsclip.models.config import AppConfig, ConnectionConfig, ClipboardConfig, ProxyConfig, LoggingConfig
+from wsclip.utils.logger import console, print_info, print_success, print_error
+from wsclip.utils.helpers import generate_peer_id
+from wsclip.utils.paths import get_config_file, ensure_config_dir
+from wsclip.config.settings import Settings
 
 
 def get_or_generate_peer_id(config: AppConfig) -> str:

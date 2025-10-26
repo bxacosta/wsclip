@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import requests
 
-from ..models.config import AppConfig
-from ..utils.logger import print_error, print_success
+from wsclip.models.config import AppConfig
+from wsclip.utils.logger import print_error, print_success
 
 
 class PairingManager:

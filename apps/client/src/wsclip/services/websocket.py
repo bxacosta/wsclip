@@ -11,10 +11,10 @@ from python_socks.async_.asyncio import Proxy
 from websockets.client import connect, WebSocketClientProtocol
 from websockets.exceptions import WebSocketException, ConnectionClosed
 
-from ..config.constants import WS_CONNECT_TIMEOUT, WS_PING_INTERVAL, WS_PING_TIMEOUT, WS_HEARTBEAT_INTERVAL
-from ..config.settings import Settings
-from ..models.config import ProxyConfig
-from ..models.messages import (
+from wsclip.config.constants import WS_CONNECT_TIMEOUT, WS_PING_INTERVAL, WS_PING_TIMEOUT, WS_HEARTBEAT_INTERVAL
+from wsclip.config.settings import Settings
+from wsclip.models.config import ProxyConfig
+from wsclip.models.messages import (
     AuthMessage,
     AuthResponseMessage,
     TextMessage,
@@ -26,7 +26,7 @@ from ..models.messages import (
     message_to_dict,
     dict_to_message,
 )
-from ..utils.logger import setup_logger, print_message, print_info, print_warning, print_error, print_success
+from wsclip.utils.logger import setup_logger, print_message, print_info, print_warning, print_error, print_success
 
 # Type alias for message handler
 MessageHandler = Callable[[BaseMessage], Awaitable[None]]

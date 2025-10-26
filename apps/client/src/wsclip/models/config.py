@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from ..utils.paths import get_config_file
+from wsclip.utils.paths import get_config_file
 
 
 @dataclass

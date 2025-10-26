@@ -3,13 +3,13 @@ from __future__ import annotations
 
 import asyncio
 
-from ..core.connection import ReconnectionStrategy
-from ..models.config import AppConfig
-from ..models.messages import ClipboardTextMessage
-from ..services.clipboard import ClipboardService
-from ..services.hotkeys import HotkeyService
-from ..services.websocket import WebSocketService
-from ..utils.logger import print_info, print_success, print_warning, print_error
+from wsclip.core.connection import ReconnectionStrategy
+from wsclip.models.config import AppConfig
+from wsclip.models.messages import ClipboardTextMessage
+from wsclip.services.clipboard import ClipboardService
+from wsclip.services.hotkeys import HotkeyService
+from wsclip.services.websocket import WebSocketService
+from wsclip.utils.logger import print_info, print_success, print_warning, print_error
 
 
 class SyncManager:

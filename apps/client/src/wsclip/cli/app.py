@@ -1,7 +1,7 @@
 """CLI application entry point."""
 import click
 
-from .commands import start_command, status_command, init_command
+from wsclip.cli.commands import start_command, status_command, init_command
 
 
 @click.group()

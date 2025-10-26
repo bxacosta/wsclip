@@ -5,7 +5,7 @@ from collections.abc import Callable, Awaitable
 import asyncio
 import pyperclip
 
-from ..utils.logger import setup_logger
+from wsclip.utils.logger import setup_logger
 
 
 class ClipboardService:

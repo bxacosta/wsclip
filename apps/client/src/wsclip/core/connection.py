@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable, Awaitable
 
-from ..utils.logger import setup_logger, print_warning, print_success
+from wsclip.utils.logger import setup_logger, print_warning, print_success
 
 
 class ReconnectionStrategy:
