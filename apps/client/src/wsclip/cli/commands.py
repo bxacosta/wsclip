@@ -7,13 +7,11 @@ import sys
 from pathlib import Path
 
 import click
-from rich.prompt import Prompt
 from rich.table import Table
 
-from wsclip.config.settings import Settings
 from wsclip.core.pairing import PairingManager
 from wsclip.core.sync_manager import SyncManager
-from wsclip.models.config import AppConfig, ClipboardConfig, ConnectionConfig, LoggingConfig, ProxyConfig
+from wsclip.models.config import AppConfig
 from wsclip.models.messages import ClipboardSyncMode
 from wsclip.utils.helpers import generate_peer_id
 from wsclip.utils.logger import console, print_error, print_info, print_success
@@ -65,21 +63,24 @@ def start_command(mode: str, token: str | None, config: Path | None) -> None:
             print_error(f"Error loading config: {e}")
             sys.exit(1)
     else:
-        # Create default config
-        print_info(f"Config not found. Creating default config at {config_path}")
+        # No config found: launch interactive wizard
+        print_info("No configuration found. Launching configuration wizard...")
+        print_info("(You can reconfigure anytime with 'wsclip config')\n")
+
         try:
             ensure_config_dir()
         except (PermissionError, OSError) as e:
             print_error(f"Cannot create config directory: {e}")
             sys.exit(1)
 
-        app_config = AppConfig(
-            connection=ConnectionConfig(worker_url=Settings.DEFAULT_WORKER_URL),
-            clipboard=ClipboardConfig(sync_mode=sync_mode),
-            proxy=ProxyConfig(),
-            logging=LoggingConfig(),
-        )
+        # Import and run wizard
+        from wsclip.cli.config_wizard import ConfigWizard
+
+        wizard = ConfigWizard(existing_config=None)
+        app_config = wizard.run(full_mode=False, new_config=True)
         app_config.save(config_path)
+
+        print_success(f"Configuration saved to {config_path}\n")
 
     # Token resolution with precedence
     pairing = PairingManager(app_config)
@@ -186,40 +187,35 @@ def status_command(config: Path | None) -> None:
 
 
 @click.command()
-def init_command() -> None:
-    """Create a default configuration file."""
+@click.option("--full", is_flag=True, help="Include advanced settings")
+@click.option("--new", is_flag=True, help="Create new config (ignore existing)")
+def config_command(full: bool, new: bool) -> None:
+    """Interactive configuration wizard."""
+    from wsclip.cli.config_wizard import ConfigWizard
+
     config_path = get_config_file()
 
-    if config_path.exists() and not click.confirm(f"{config_path} already exists. Overwrite?"):
-        return
-
-    # Ensure the config directory exists
+    # Ensure config directory exists
     try:
         ensure_config_dir()
     except (PermissionError, OSError) as e:
         print_error(f"Cannot create config directory: {e}")
         return
 
-    # Prompt for Worker URL
-    worker_url = Prompt.ask("Cloudflare Worker URL", default=Settings.DEFAULT_WORKER_URL)
+    # Load existing config if available (unless --new flag)
+    existing_config = None
+    if not new and config_path.exists():
+        try:
+            existing_config = AppConfig.from_json(config_path)
+        except (FileNotFoundError, ValueError) as e:
+            print_error(f"Error loading existing config: {e}")
+            print_info("Proceeding with new configuration...")
 
-    # Create config with hierarchical structure
-    config = AppConfig(
-        connection=ConnectionConfig(
-            worker_url=worker_url,
-            peer_id="",  # Will be auto-generated
-            token="",
-        ),
-        clipboard=ClipboardConfig(
-            sync_mode=Settings.DEFAULT_CLIPBOARD_MODE,
-            hotkey=Settings.DEFAULT_CLIPBOARD_HOTKEY,
-            poll_interval=Settings.DEFAULT_CLIPBOARD_POLL_INTERVAL,
-            max_size_mb=Settings.DEFAULT_CLIPBOARD_MAX_SIZE_MB,
-        ),
-        proxy=ProxyConfig(),
-        logging=LoggingConfig(level=Settings.DEFAULT_LOG_LEVEL),
-    )
+    # Run wizard
+    wizard = ConfigWizard(existing_config=existing_config)
+    config = wizard.run(full_mode=full, new_config=new)
 
+    # Save configuration
     config.save(config_path)
 
     print_success(f"Configuration saved to {config_path}")

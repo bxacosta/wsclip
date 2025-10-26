@@ -2,7 +2,7 @@
 
 import click
 
-from wsclip.cli.commands import init_command, start_command, status_command
+from wsclip.cli.commands import config_command, start_command, status_command
 
 
 @click.group()
@@ -19,7 +19,7 @@ def cli() -> None:
 # Register commands
 cli.add_command(start_command, name="start")
 cli.add_command(status_command, name="status")
-cli.add_command(init_command, name="init")
+cli.add_command(config_command, name="config")
 
 
 if __name__ == "__main__":
