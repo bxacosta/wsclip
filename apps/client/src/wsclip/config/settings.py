@@ -13,8 +13,8 @@ class Settings:
 
     # WebSocket
     WS_CONNECT_TIMEOUT = 10.0  # seconds
-    WS_PING_INTERVAL = 30.0    # seconds (prevent connection hibernation)
-    WS_PING_TIMEOUT = 10.0     # seconds
+    WS_PING_INTERVAL = 30.0  # seconds (prevent connection hibernation)
+    WS_PING_TIMEOUT = 10.0  # seconds
     WS_HEARTBEAT_INTERVAL = 30.0  # seconds (send heartbeat to keep Durable Object alive)
 
     # Clipboard
@@ -24,7 +24,7 @@ class Settings:
 
     # Reconnection
     RECONNECT_INITIAL_DELAY = 1.0  # seconds
-    RECONNECT_MAX_DELAY = 30.0     # seconds
+    RECONNECT_MAX_DELAY = 30.0  # seconds
     RECONNECT_MAX_ATTEMPTS = 10
 
     # Mode

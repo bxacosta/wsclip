@@ -24,4 +24,22 @@ build-backend = "setuptools.build_meta"
 [dependency-groups]
 dev = [
     "pyinstaller>=6.16.0",
+    "pyrefly>=0.38.2",
+    "ruff>=0.14.2",
 ]
+
+# Ruff
+[tool.ruff]
+src = ["src"]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "C4", "T20", "UP", "SIM", "RUF"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+# Pyrefly
+[tool.pyrefly]
+project-includes = ["src"]

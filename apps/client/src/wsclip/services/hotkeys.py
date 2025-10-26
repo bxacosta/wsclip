@@ -1,4 +1,5 @@
 """Hotkey service for capturing global keyboard shortcuts."""
+
 from __future__ import annotations
 
 from collections.abc import Callable, Awaitable
@@ -24,11 +25,7 @@ class HotkeyService:
         self._running = False
         self._loop: asyncio.AbstractEventLoop | None = None
 
-    async def register(
-        self,
-        keys: str,
-        callback: Callable[[], Awaitable[None]]
-    ) -> None:
+    async def register(self, keys: str, callback: Callable[[], Awaitable[None]]) -> None:
         """
         Register a hotkey combination.
 
@@ -53,10 +50,7 @@ class HotkeyService:
 
         # Run GlobalHotKeys creation in executor to avoid blocking event loop
         loop = asyncio.get_running_loop()
-        self._listener = await loop.run_in_executor(
-            None,
-            lambda: keyboard.GlobalHotKeys({keys: sync_callback})
-        )
+        self._listener = await loop.run_in_executor(None, lambda: keyboard.GlobalHotKeys({keys: sync_callback}))
 
     async def start(self) -> None:
         """Start listening for hotkeys."""

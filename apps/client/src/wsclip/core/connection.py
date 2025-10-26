@@ -1,4 +1,5 @@
 """Reconnection strategy with exponential backoff."""
+
 from __future__ import annotations
 
 import asyncio
@@ -10,12 +11,7 @@ from wsclip.utils.logger import setup_logger, print_warning, print_success
 class ReconnectionStrategy:
     """Handles automatic reconnection with exponential backoff."""
 
-    def __init__(
-        self,
-        initial_delay: float = 1.0,
-        max_delay: float = 30.0,
-        max_attempts: int = 10
-    ):
+    def __init__(self, initial_delay: float = 1.0, max_delay: float = 30.0, max_attempts: int = 10):
         """
         Initialize reconnection strategy.
 
@@ -53,10 +49,7 @@ class ReconnectionStrategy:
 
         return delay
 
-    async def connect_with_retry(
-        self,
-        connect_fn: Callable[[], Awaitable[bool]]
-    ) -> bool:
+    async def connect_with_retry(self, connect_fn: Callable[[], Awaitable[bool]]) -> bool:
         """
         Attempt connection with automatic retry.
 
@@ -86,8 +79,5 @@ class ReconnectionStrategy:
                 print_warning(f"Max reconnection attempts ({self.max_attempts}) exceeded")
                 return False
 
-            print_warning(
-                f"Reconnecting in {delay:.1f}s "
-                f"(attempt {self._attempt_count}/{self.max_attempts})..."
-            )
+            print_warning(f"Reconnecting in {delay:.1f}s (attempt {self._attempt_count}/{self.max_attempts})...")
             await asyncio.sleep(delay)

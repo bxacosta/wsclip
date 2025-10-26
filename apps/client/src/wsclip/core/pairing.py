@@ -1,4 +1,5 @@
 """Pairing manager for token generation and joining."""
+
 from __future__ import annotations
 
 import requests
@@ -18,7 +19,7 @@ class PairingManager:
             config: Application configuration
         """
         self.config = config
-        self.api_url = config.connection.worker_url.replace('wss://', 'https://').replace('/ws', '')
+        self.api_url = config.connection.worker_url.replace("wss://", "https://").replace("/ws", "")
 
     def generate_token(self) -> str | None:
         """
@@ -31,7 +32,7 @@ class PairingManager:
             response = requests.get(f"{self.api_url}/api/generate-token", timeout=10)
             response.raise_for_status()
             data = response.json()
-            token = data['token']
+            token = data["token"]
 
             # Save to config
             self.config.connection.token = token

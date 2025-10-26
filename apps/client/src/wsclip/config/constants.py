@@ -1,19 +1,19 @@
 """Application constants."""
 
 # Message types
-MSG_AUTH = 'auth'
-MSG_AUTH_RESPONSE = 'auth_response'
-MSG_TEXT = 'text_message'
-MSG_CLIPBOARD = 'clipboard_text'
-MSG_PEER_CONNECTED = 'peer_connected'
-MSG_PEER_DISCONNECTED = 'peer_disconnected'
-MSG_ERROR = 'error'
+MSG_AUTH = "auth"
+MSG_AUTH_RESPONSE = "auth_response"
+MSG_TEXT = "text_message"
+MSG_CLIPBOARD = "clipboard_text"
+MSG_PEER_CONNECTED = "peer_connected"
+MSG_PEER_DISCONNECTED = "peer_disconnected"
+MSG_ERROR = "error"
 
 # Error codes
-ERR_TOKEN_INVALID = 'TOKEN_INVALID'
-ERR_PEER_LIMIT = 'PEER_LIMIT'
-ERR_ALREADY_CONNECTED = 'ALREADY_CONNECTED'
-ERR_INTERNAL_ERROR = 'INTERNAL_ERROR'
+ERR_TOKEN_INVALID = "TOKEN_INVALID"
+ERR_PEER_LIMIT = "PEER_LIMIT"
+ERR_ALREADY_CONNECTED = "ALREADY_CONNECTED"
+ERR_INTERNAL_ERROR = "INTERNAL_ERROR"
 
 # WebSocket connection settings (imported from settings)
 from wsclip.config.settings import Settings

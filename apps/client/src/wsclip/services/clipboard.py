@@ -1,4 +1,5 @@
 """Clipboard service for system clipboard operations."""
+
 from __future__ import annotations
 
 from collections.abc import Callable, Awaitable
@@ -14,7 +15,7 @@ class ClipboardService:
     def __init__(
         self,
         poll_interval: float = 0.5,
-        max_size_bytes: int = 1048576  # 1MB
+        max_size_bytes: int = 1048576,  # 1MB
     ):
         """
         Initialize clipboard service.
@@ -82,7 +83,7 @@ class ClipboardService:
             return True
 
         # Ignore if content too large
-        content_bytes = len(content.encode('utf-8'))
+        content_bytes = len(content.encode("utf-8"))
         if content_bytes > self.max_size_bytes:
             size_mb = content_bytes / (1024 * 1024)
             max_mb = self.max_size_bytes / (1024 * 1024)
@@ -95,10 +96,7 @@ class ClipboardService:
 
         return False
 
-    async def start_monitoring(
-        self,
-        on_change: Callable[[str], Awaitable[None]]
-    ) -> None:
+    async def start_monitoring(self, on_change: Callable[[str], Awaitable[None]]) -> None:
         """
         Start monitoring clipboard for changes.
 
@@ -112,9 +110,7 @@ class ClipboardService:
         self._last_content = self.get()
 
         # Start monitoring loop
-        self._monitor_task = asyncio.create_task(
-            self._monitor_loop(on_change)
-        )
+        self._monitor_task = asyncio.create_task(self._monitor_loop(on_change))
 
     async def stop_monitoring(self) -> None:
         """Stop clipboard monitoring."""
@@ -128,10 +124,7 @@ class ClipboardService:
                 pass
             self._monitor_task = None
 
-    async def _monitor_loop(
-        self,
-        on_change: Callable[[str], Awaitable[None]]
-    ) -> None:
+    async def _monitor_loop(self, on_change: Callable[[str], Awaitable[None]]) -> None:
         """
         Internal monitoring loop.
 

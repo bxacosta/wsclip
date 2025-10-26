@@ -1,4 +1,5 @@
 """WebSocket service for communication with the relay server."""
+
 from __future__ import annotations
 
 import asyncio
@@ -36,12 +37,7 @@ class WebSocketService:
     """WebSocket client for peer-to-peer communication via relay server."""
 
     def __init__(
-            self,
-            worker_url: str,
-            token: str,
-            peer_id: str,
-            log_level: str = "INFO",
-            proxy: ProxyConfig | None = None
+        self, worker_url: str, token: str, peer_id: str, log_level: str = "INFO", proxy: ProxyConfig | None = None
     ):
         """
         Initialize WebSocket service.
@@ -89,14 +85,14 @@ class WebSocketService:
             # Parse URL to get destination host and port
             parsed_url = urlparse(self.worker_url)
             dest_host = parsed_url.hostname
-            dest_port = parsed_url.port or (443 if parsed_url.scheme == 'wss' else 80)
+            dest_port = parsed_url.port or (443 if parsed_url.scheme == "wss" else 80)
 
             # Prepare connection parameters
             connect_params = {
-                'ping_interval': WS_PING_INTERVAL,
-                'ping_timeout': WS_PING_TIMEOUT,
-                'open_timeout': WS_CONNECT_TIMEOUT,
-                'close_timeout': None,  # No timeout for closing handshake
+                "ping_interval": WS_PING_INTERVAL,
+                "ping_timeout": WS_PING_TIMEOUT,
+                "open_timeout": WS_CONNECT_TIMEOUT,
+                "close_timeout": None,  # No timeout for closing handshake
             }
 
             # Connect via SOCKS5 proxy if enabled
@@ -106,7 +102,9 @@ class WebSocketService:
 
                     # Build proxy URL
                     if self.proxy.username and self.proxy.password:
-                        proxy_url = f"socks5://{self.proxy.username}:{self.proxy.password}@{self.proxy.host}:{self.proxy.port}"
+                        proxy_url = (
+                            f"socks5://{self.proxy.username}:{self.proxy.password}@{self.proxy.host}:{self.proxy.port}"
+                        )
                     else:
                         proxy_url = f"socks5://{self.proxy.host}:{self.proxy.port}"
 
@@ -115,7 +113,7 @@ class WebSocketService:
                     proxy_sock = await proxy.connect(dest=dest_host, port=dest_port)
 
                     # Connect WebSocket through proxy socket
-                    connect_params['sock'] = proxy_sock
+                    connect_params["sock"] = proxy_sock
                     self.websocket = await connect(ws_url, **connect_params)
 
                 except ConnectionRefusedError:
@@ -195,7 +193,7 @@ class WebSocketService:
             return
 
         # Validate size before sending
-        content_size = len(content.encode('utf-8'))
+        content_size = len(content.encode("utf-8"))
         if content_size > Settings.MAX_MESSAGE_SIZE:
             print_error(
                 f"Clipboard too large: {content_size / 1024 / 1024:.1f}MB "
@@ -207,7 +205,7 @@ class WebSocketService:
             from_peer=self.peer_id,
             content=content,
             message_id=str(uuid.uuid4()),
-            source=source  # type: ignore
+            source=source,  # type: ignore
         )
 
         await self._send_message(msg)
@@ -326,7 +324,7 @@ class WebSocketService:
             raw = await self.websocket.recv()
 
             if isinstance(raw, bytes):
-                raw = raw.decode('utf-8')
+                raw = raw.decode("utf-8")
 
             data = json.loads(raw)
             return dict_to_message(data)
@@ -350,11 +348,11 @@ class WebSocketService:
             case TextMessage(from_peer=peer, content=content):
                 print_message(peer, content)
 
-            case PeerEventMessage(type='peer_connected', peer_id=peer_id):
+            case PeerEventMessage(type="peer_connected", peer_id=peer_id):
                 self.paired_peer = peer_id
                 print_success(f"Peer connected: {peer_id}")
 
-            case PeerEventMessage(type='peer_disconnected', peer_id=peer_id):
+            case PeerEventMessage(type="peer_disconnected", peer_id=peer_id):
                 print_warning(f"Peer disconnected: {peer_id}")
                 self.paired_peer = None
 

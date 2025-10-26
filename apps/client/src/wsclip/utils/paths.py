@@ -1,4 +1,5 @@
 """Path utilities for XDG-compliant configuration directory."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -15,7 +16,7 @@ def get_config_dir() -> Path:
         On Windows, ~ expands to user profile directory
         (e.g., C:\\Users\\username\\.config\\wsclip\\)
     """
-    config_dir = Path.home() / '.config' / 'wsclip'
+    config_dir = Path.home() / ".config" / "wsclip"
     return config_dir
 
 
@@ -26,7 +27,7 @@ def get_config_file() -> Path:
     Returns:
         Path to ~/.config/wsclip/config.json
     """
-    return get_config_dir() / 'config.json'
+    return get_config_dir() / "config.json"
 
 
 def ensure_config_dir() -> None:
@@ -47,10 +48,6 @@ def ensure_config_dir() -> None:
     try:
         config_dir.mkdir(parents=True, exist_ok=True)
     except PermissionError as e:
-        raise PermissionError(
-            f"Cannot create config directory {config_dir}: Permission denied"
-        ) from e
+        raise PermissionError(f"Cannot create config directory {config_dir}: Permission denied") from e
     except OSError as e:
-        raise OSError(
-            f"Failed to create config directory {config_dir}: {e}"
-        ) from e
+        raise OSError(f"Failed to create config directory {config_dir}: {e}") from e

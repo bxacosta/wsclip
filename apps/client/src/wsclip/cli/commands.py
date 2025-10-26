@@ -1,4 +1,5 @@
 """CLI commands for WSClip."""
+
 from __future__ import annotations
 
 import asyncio
@@ -26,9 +27,9 @@ def get_or_generate_peer_id(config: AppConfig) -> str:
 
 
 @click.command()
-@click.option('--mode', type=click.Choice(['auto', 'manual']), default='manual', help='Clipboard sync mode')
-@click.option('--token', default=None, help='Pairing token (optional)')
-@click.option('--config', default=None, help='Config file path (default: ~/.config/wsclip/config.json)')
+@click.option("--mode", type=click.Choice(["auto", "manual"]), default="manual", help="Clipboard sync mode")
+@click.option("--token", default=None, help="Pairing token (optional)")
+@click.option("--config", default=None, help="Config file path (default: ~/.config/wsclip/config.json)")
 def start_command(mode: str, token: str | None, config: str | None) -> None:
     """
     Start clipboard sync with specified mode.
@@ -64,7 +65,7 @@ def start_command(mode: str, token: str | None, config: str | None) -> None:
             connection=ConnectionConfig(worker_url=Settings.DEFAULT_WORKER_URL),
             clipboard=ClipboardConfig(mode=mode),
             proxy=ProxyConfig(),
-            logging=LoggingConfig()
+            logging=LoggingConfig(),
         )
         app_config.save(config_path)
 
@@ -111,7 +112,7 @@ def start_command(mode: str, token: str | None, config: str | None) -> None:
     finally:
         # Cleanup
         loop.run_until_complete(sync_manager.stop())
-        
+
         # Cancel all pending tasks
         pending = asyncio.all_tasks(loop)
         for task in pending:
@@ -125,7 +126,7 @@ def start_command(mode: str, token: str | None, config: str | None) -> None:
 
 
 @click.command()
-@click.option('--config', default=None, help='Config file path (default: ~/.config/wsclip/config.json)')
+@click.option("--config", default=None, help="Config file path (default: ~/.config/wsclip/config.json)")
 def status_command(config: str | None) -> None:
     """Show connection status and configuration."""
     # Determine config path
@@ -153,10 +154,12 @@ def status_command(config: str | None) -> None:
 
     table.add_row("Config File", str(config_path))
     table.add_row("Mode", app_config.clipboard.mode)
-    table.add_row("Hotkey", app_config.clipboard.hotkey if app_config.clipboard.mode == 'manual' else 'N/A')
+    table.add_row("Hotkey", app_config.clipboard.hotkey if app_config.clipboard.mode == "manual" else "N/A")
     table.add_row("Worker URL", app_config.connection.worker_url)
-    table.add_row("Peer ID", app_config.connection.peer_id if app_config.connection.peer_id else '[dim]auto-generated[/dim]')
-    table.add_row("Token", app_config.connection.token if app_config.connection.token else '[dim]not set[/dim]')
+    table.add_row(
+        "Peer ID", app_config.connection.peer_id if app_config.connection.peer_id else "[dim]auto-generated[/dim]"
+    )
+    table.add_row("Token", app_config.connection.token if app_config.connection.token else "[dim]not set[/dim]")
     table.add_row("Auto-reconnect", "Enabled" if app_config.connection.reconnect.enabled else "Disabled")
     table.add_row("Reconnect Attempts", str(app_config.connection.reconnect.max_attempts))
     table.add_row("Poll Interval", f"{app_config.clipboard.poll_interval}s")
@@ -173,7 +176,7 @@ def init_command() -> None:
     config_path = get_config_file()
 
     if config_path.exists():
-        if not click.confirm(f'{config_path} already exists. Overwrite?'):
+        if not click.confirm(f"{config_path} already exists. Overwrite?"):
             return
 
     # Ensure config directory exists
@@ -184,26 +187,23 @@ def init_command() -> None:
         return
 
     # Prompt for Worker URL
-    worker_url = Prompt.ask(
-        "Cloudflare Worker URL",
-        default=Settings.DEFAULT_WORKER_URL
-    )
+    worker_url = Prompt.ask("Cloudflare Worker URL", default=Settings.DEFAULT_WORKER_URL)
 
     # Create config with hierarchical structure
     config = AppConfig(
         connection=ConnectionConfig(
             worker_url=worker_url,
-            peer_id='',  # Will be auto-generated
-            token='',
+            peer_id="",  # Will be auto-generated
+            token="",
         ),
         clipboard=ClipboardConfig(
-            mode='manual',
-            hotkey='<alt>+<shift>+<enter>',
+            mode="manual",
+            hotkey="<alt>+<shift>+<enter>",
             poll_interval=0.5,
             max_size_mb=1,
         ),
         proxy=ProxyConfig(),
-        logging=LoggingConfig(level='INFO')
+        logging=LoggingConfig(level="INFO"),
     )
 
     config.save(config_path)

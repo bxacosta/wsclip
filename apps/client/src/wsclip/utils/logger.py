@@ -1,4 +1,5 @@
 """Rich-based logging utilities."""
+
 import logging
 
 from rich.console import Console
@@ -6,14 +7,16 @@ from rich.logging import RichHandler
 from rich.theme import Theme
 
 # Custom theme for console output
-CUSTOM_THEME = Theme({
-    "info": "cyan",
-    "warning": "yellow",
-    "error": "bold red",
-    "success": "bold green",
-    "peer": "magenta",
-    "message": "white",
-})
+CUSTOM_THEME = Theme(
+    {
+        "info": "cyan",
+        "warning": "yellow",
+        "error": "bold red",
+        "success": "bold green",
+        "peer": "magenta",
+        "message": "white",
+    }
+)
 
 # Global console instance
 console = Console(theme=CUSTOM_THEME)

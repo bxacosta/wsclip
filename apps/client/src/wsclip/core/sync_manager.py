@@ -1,4 +1,5 @@
 """Sync manager for orchestrating clipboard synchronization."""
+
 from __future__ import annotations
 
 import asyncio
@@ -30,21 +31,20 @@ class SyncManager:
             token=config.connection.token,
             peer_id=config.connection.peer_id,
             log_level=config.logging.level,
-            proxy=config.proxy
+            proxy=config.proxy,
         )
 
         self.clipboard_service = ClipboardService(
-            poll_interval=config.clipboard.poll_interval,
-            max_size_bytes=config.clipboard.max_size_mb * 1024 * 1024
+            poll_interval=config.clipboard.poll_interval, max_size_bytes=config.clipboard.max_size_mb * 1024 * 1024
         )
 
         self.hotkey_service: HotkeyService | None = None
 
         # Register message handlers
-        self.ws_service.register_handler('clipboard_text', self._on_clipboard_received)
+        self.ws_service.register_handler("clipboard_text", self._on_clipboard_received)
 
     @classmethod
-    def from_config(cls, config_path: str | None = None) -> 'SyncManager':
+    def from_config(cls, config_path: str | None = None) -> "SyncManager":
         """
         Create SyncManager from config file.
 
@@ -74,9 +74,9 @@ class SyncManager:
             return
 
         # Start mode-specific sync
-        if self.config.clipboard.mode == 'auto':
+        if self.config.clipboard.mode == "auto":
             await self._start_auto_mode()
-        elif self.config.clipboard.mode == 'manual':
+        elif self.config.clipboard.mode == "manual":
             await self._start_manual_mode()
 
     async def _connect_with_retry(self) -> bool:
@@ -91,19 +91,15 @@ class SyncManager:
             return await self.ws_service.connect()
 
         # Connect with retry strategy
-        reconnect_strategy = ReconnectionStrategy(
-            max_attempts=self.config.connection.reconnect.max_attempts
-        )
-        return await reconnect_strategy.connect_with_retry(
-            self.ws_service.connect
-        )
+        reconnect_strategy = ReconnectionStrategy(max_attempts=self.config.connection.reconnect.max_attempts)
+        return await reconnect_strategy.connect_with_retry(self.ws_service.connect)
 
     async def stop(self) -> None:
         """Stop clipboard synchronization."""
         try:
-            if self.config.clipboard.mode == 'auto':
+            if self.config.clipboard.mode == "auto":
                 await self.clipboard_service.stop_monitoring()
-            elif self.config.clipboard.mode == 'manual' and self.hotkey_service:
+            elif self.config.clipboard.mode == "manual" and self.hotkey_service:
                 self.hotkey_service.stop()
 
             await self.ws_service.disconnect()
@@ -115,7 +111,7 @@ class SyncManager:
         print_info("Auto mode: monitoring clipboard...")
 
         async def on_clipboard_change(content: str) -> None:
-            await self.ws_service.send_clipboard(content, source='auto')
+            await self.ws_service.send_clipboard(content, source="auto")
             print_success(f"Sent clipboard: {len(content)} chars")
 
         await self.clipboard_service.start_monitoring(on_clipboard_change)
@@ -130,7 +126,7 @@ class SyncManager:
         async def send_current_clipboard() -> None:
             content = self.clipboard_service.get()
             if content:
-                await self.ws_service.send_clipboard(content, source='manual')
+                await self.ws_service.send_clipboard(content, source="manual")
                 print_success(f"Sent clipboard: {len(content)} chars")
             else:
                 print_warning("Clipboard is empty")
