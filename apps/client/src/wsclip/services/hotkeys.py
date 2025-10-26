@@ -2,17 +2,20 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Awaitable
 import asyncio
+from collections.abc import Callable, Coroutine
+from typing import Any
+
 from pynput import keyboard
 
+from wsclip.config.settings import Settings
 from wsclip.utils.logger import setup_logger
 
 
 class HotkeyService:
     """Service for capturing global hotkeys."""
 
-    def __init__(self, log_level: str = "INFO"):
+    def __init__(self, log_level: str = Settings.DEFAULT_LOG_LEVEL):
         """
         Initialize hotkey service.
 
@@ -21,11 +24,11 @@ class HotkeyService:
         """
         self.logger = setup_logger("hotkey_service", log_level)
         self._listener: keyboard.GlobalHotKeys | None = None
-        self._hotkey_map: dict[str, Callable[[], Awaitable[None]]] = {}
+        self._hotkey_map: dict[str, Callable[[], Coroutine[Any, Any, None]]] = {}
         self._running = False
         self._loop: asyncio.AbstractEventLoop | None = None
 
-    async def register(self, keys: str, callback: Callable[[], Awaitable[None]]) -> None:
+    async def register(self, keys: str, callback: Callable[[], Coroutine[Any, Any, None]]) -> None:
         """
         Register a hotkey combination.
 
@@ -50,7 +53,7 @@ class HotkeyService:
 
         # Run GlobalHotKeys creation in executor to avoid blocking event loop
         loop = asyncio.get_running_loop()
-        self._listener = await loop.run_in_executor(None, lambda: keyboard.GlobalHotKeys({keys: sync_callback}))
+        self._listener = await loop.run_in_executor(None, lambda *_: keyboard.GlobalHotKeys({keys: sync_callback}))
 
     async def start(self) -> None:
         """Start listening for hotkeys."""

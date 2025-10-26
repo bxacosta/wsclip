@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import requests
 
 from wsclip.models.config import AppConfig
@@ -44,7 +46,7 @@ class PairingManager:
             print_error(f"Failed to generate token: {e}")
             return None
 
-    def join_with_token(self, token: str, config_path: str) -> bool:
+    def join_with_token(self, token: str, config_path: Path) -> bool:
         """
         Join a session with an existing token.
 

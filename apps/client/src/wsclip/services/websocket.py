@@ -5,29 +5,31 @@ from __future__ import annotations
 import asyncio
 import json
 import uuid
-from collections.abc import Callable, Awaitable
+from collections.abc import Awaitable, Callable
+from contextlib import suppress
+from typing import Any
 from urllib.parse import urlparse
 
 from python_socks.async_.asyncio import Proxy
-from websockets.client import connect, WebSocketClientProtocol
-from websockets.exceptions import WebSocketException, ConnectionClosed
+from websockets.asyncio.client import ClientConnection, connect
+from websockets.exceptions import ConnectionClosed, WebSocketException
 
-from wsclip.config.constants import WS_CONNECT_TIMEOUT, WS_PING_INTERVAL, WS_PING_TIMEOUT, WS_HEARTBEAT_INTERVAL
 from wsclip.config.settings import Settings
 from wsclip.models.config import ProxyConfig
 from wsclip.models.messages import (
     AuthMessage,
     AuthResponseMessage,
-    TextMessage,
-    ClipboardTextMessage,
-    PeerEventMessage,
-    HeartbeatMessage,
-    ErrorMessage,
     BaseMessage,
-    message_to_dict,
+    ClipboardSyncMode,
+    ClipboardTextMessage,
+    ErrorMessage,
+    HeartbeatMessage,
+    PeerEventMessage,
+    TextMessage,
     dict_to_message,
+    message_to_dict,
 )
-from wsclip.utils.logger import setup_logger, print_message, print_info, print_warning, print_error, print_success
+from wsclip.utils.logger import print_error, print_info, print_message, print_success, print_warning, setup_logger
 
 # Type alias for message handler
 MessageHandler = Callable[[BaseMessage], Awaitable[None]]
@@ -37,7 +39,12 @@ class WebSocketService:
     """WebSocket client for peer-to-peer communication via relay server."""
 
     def __init__(
-        self, worker_url: str, token: str, peer_id: str, log_level: str = "INFO", proxy: ProxyConfig | None = None
+        self,
+        worker_url: str,
+        token: str,
+        peer_id: str,
+        log_level: str = Settings.DEFAULT_LOG_LEVEL,
+        proxy: ProxyConfig | None = None,
     ):
         """
         Initialize WebSocket service.
@@ -55,7 +62,7 @@ class WebSocketService:
         self.proxy = proxy
         self.logger = setup_logger(f"ws_service.{peer_id}", log_level)
 
-        self.websocket: WebSocketClientProtocol | None = None
+        self.websocket: ClientConnection | None = None
         self.authenticated = False
         self.paired_peer: str | None = None
         self.session_id: str | None = None
@@ -87,11 +94,16 @@ class WebSocketService:
             dest_host = parsed_url.hostname
             dest_port = parsed_url.port or (443 if parsed_url.scheme == "wss" else 80)
 
+            # Validate hostname
+            if not dest_host:
+                print_error("Invalid worker URL: hostname not found")
+                return False
+
             # Prepare connection parameters
-            connect_params = {
-                "ping_interval": WS_PING_INTERVAL,
-                "ping_timeout": WS_PING_TIMEOUT,
-                "open_timeout": WS_CONNECT_TIMEOUT,
+            connect_params: dict[str, Any] = {
+                "ping_interval": Settings.WS_PING_INTERVAL,
+                "ping_timeout": Settings.WS_PING_TIMEOUT,
+                "open_timeout": Settings.WS_CONNECT_TIMEOUT,
                 "close_timeout": None,  # No timeout for closing handshake
             }
 
@@ -101,20 +113,19 @@ class WebSocketService:
                     self.logger.info(f"Connecting via SOCKS5 proxy {self.proxy.host}:{self.proxy.port}...")
 
                     # Build proxy URL
-                    if self.proxy.username and self.proxy.password:
-                        proxy_url = (
-                            f"socks5://{self.proxy.username}:{self.proxy.password}@{self.proxy.host}:{self.proxy.port}"
-                        )
+                    if self.proxy.auth.username and self.proxy.auth.password:
+                        proxy_url = f"socks5://{self.proxy.auth.username}:{self.proxy.auth.password}@{self.proxy.host}:{self.proxy.port}"
                     else:
                         proxy_url = f"socks5://{self.proxy.host}:{self.proxy.port}"
 
                     # Create proxy connection
                     proxy = Proxy.from_url(proxy_url)
-                    proxy_sock = await proxy.connect(dest=dest_host, port=dest_port)
+                    proxy_sock = await proxy.connect(dest_host=dest_host, dest_port=dest_port)
 
                     # Connect WebSocket through proxy socket
-                    connect_params["sock"] = proxy_sock
-                    self.websocket = await connect(ws_url, **connect_params)
+                    # proxy_sock is socket-like object, websockets accepts it
+                    connect_params_with_sock: dict[str, Any] = {**connect_params, "sock": proxy_sock}
+                    self.websocket = await connect(ws_url, **connect_params_with_sock)
 
                 except ConnectionRefusedError:
                     print_error(f"SOCKS5 proxy at {self.proxy.host}:{self.proxy.port} not responding")
@@ -169,10 +180,11 @@ class WebSocketService:
         """Disconnect from WebSocket server."""
         self._running = False
 
-        if self.websocket:
+        websocket = self.websocket
+        if websocket:
             try:
-                await asyncio.wait_for(self.websocket.close(), timeout=2.0)
-            except (Exception, asyncio.TimeoutError, asyncio.CancelledError):
+                await asyncio.wait_for(websocket.close(), timeout=2.0)
+            except (TimeoutError, Exception, asyncio.CancelledError):
                 pass
             finally:
                 self.websocket = None
@@ -180,7 +192,7 @@ class WebSocketService:
         self.authenticated = False
         self.logger.info("Disconnected")
 
-    async def send_clipboard(self, content: str, source: str = "manual") -> None:
+    async def send_clipboard(self, content: str, source: ClipboardSyncMode = ClipboardSyncMode.MANUAL) -> None:
         """
         Send clipboard content to paired peer.
 
@@ -201,34 +213,34 @@ class WebSocketService:
             )
             return
 
-        msg = ClipboardTextMessage(
+        message = ClipboardTextMessage(
             from_peer=self.peer_id,
             content=content,
             message_id=str(uuid.uuid4()),
-            source=source,  # type: ignore
+            source=source,
         )
 
-        await self._send_message(msg)
-        self.logger.debug(f"Sent clipboard ({source}): {len(content)} chars")
+        await self._send_message(message)
+        self.logger.debug(f"Sent clipboard ({source.value}): {len(content)} chars")
 
     async def _heartbeat_loop(self) -> None:
         """Send periodic heartbeat messages to keep connection alive."""
         try:
             while self._running and self.websocket:
                 # Wait first to avoid redundant heartbeat on connection
-                await asyncio.sleep(WS_HEARTBEAT_INTERVAL)
+                await asyncio.sleep(Settings.WS_HEARTBEAT_INTERVAL)
 
                 if self._running and self.websocket:
                     heartbeat = HeartbeatMessage(peer_id=self.peer_id)
                     await self._send_message(heartbeat)
-                    self.logger.debug(f"Heartbeat sent (next in {WS_HEARTBEAT_INTERVAL}s)")
+                    self.logger.debug(f"Heartbeat sent (next in {Settings.WS_HEARTBEAT_INTERVAL}s)")
         except asyncio.CancelledError:
             self.logger.debug("Heartbeat loop cancelled")
             raise
         except Exception as e:
             self.logger.error(f"Error in heartbeat loop: {e}")
 
-    async def receive_loop(self, mode: str = "manual") -> None:
+    async def receive_loop(self, mode: ClipboardSyncMode = ClipboardSyncMode.MANUAL) -> None:
         """
         Listen for incoming messages (blocking).
         Runs until disconnect() is called or connection is lost.
@@ -240,7 +252,7 @@ class WebSocketService:
             print_error("Not authenticated, cannot listen")
             return
 
-        if mode == "auto":
+        if mode == ClipboardSyncMode.AUTO:
             print_info("Monitoring clipboard changes... (Ctrl+C to stop)")
         else:
             print_info("Ready to send clipboard (Ctrl+C to stop)")
@@ -252,10 +264,10 @@ class WebSocketService:
             self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
 
             while self._running and self.websocket:
-                msg = await self._receive_message()
+                message = await self._receive_message()
 
-                if msg:
-                    await self._handle_message(msg)
+                if message:
+                    await self._handle_message(message)
 
         except (KeyboardInterrupt, asyncio.CancelledError):
             self._running = False
@@ -288,10 +300,8 @@ class WebSocketService:
             # Cancel heartbeat task
             if self._heartbeat_task and not self._heartbeat_task.done():
                 self._heartbeat_task.cancel()
-                try:
+                with suppress(asyncio.CancelledError):
                     await self._heartbeat_task
-                except asyncio.CancelledError:
-                    pass
 
     def register_handler(self, message_type: str, handler: MessageHandler) -> None:
         """
@@ -309,19 +319,21 @@ class WebSocketService:
 
     async def _send_message(self, message: BaseMessage) -> None:
         """Send a message object via WebSocket."""
-        if not self.websocket:
+        websocket = self.websocket
+        if not websocket:
             raise RuntimeError("WebSocket not connected")
 
         data = message_to_dict(message)
-        await self.websocket.send(json.dumps(data))
+        await websocket.send(json.dumps(data))
 
     async def _receive_message(self) -> BaseMessage | None:
         """Receive and parse message from WebSocket."""
-        if not self.websocket:
+        websocket = self.websocket
+        if not websocket:
             return None
 
         try:
-            raw = await self.websocket.recv()
+            raw = await websocket.recv()
 
             if isinstance(raw, bytes):
                 raw = raw.decode("utf-8")
@@ -356,11 +368,11 @@ class WebSocketService:
                 print_warning(f"Peer disconnected: {peer_id}")
                 self.paired_peer = None
 
-            case ErrorMessage(code=code, message=msg):
-                print_error(f"Server error [{code}]: {msg}")
+            case ErrorMessage(code=code, message=error_message):
+                print_error(f"Server error [{code}]: {error_message}")
 
             case ClipboardTextMessage(from_peer=peer, content=content, source=source):
-                print_message(peer, f"[Clipboard {source}] {content[:50]}...")
+                print_message(peer, f"[Clipboard {source.value}] {content[:50]}...")
 
             case _:
                 self.logger.warning(f"Unhandled message type: {message.type}")

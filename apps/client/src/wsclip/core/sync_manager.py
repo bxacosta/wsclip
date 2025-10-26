@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import suppress
 
 from wsclip.core.connection import ReconnectionStrategy
 from wsclip.models.config import AppConfig
-from wsclip.models.messages import ClipboardTextMessage
+from wsclip.models.messages import BaseMessage, ClipboardSyncMode, ClipboardTextMessage
 from wsclip.services.clipboard import ClipboardService
 from wsclip.services.hotkeys import HotkeyService
 from wsclip.services.websocket import WebSocketService
-from wsclip.utils.logger import print_info, print_success, print_warning, print_error
+from wsclip.utils.logger import print_error, print_info, print_success, print_warning
 
 
 class SyncManager:
@@ -44,7 +45,7 @@ class SyncManager:
         self.ws_service.register_handler("clipboard_text", self._on_clipboard_received)
 
     @classmethod
-    def from_config(cls, config_path: str | None = None) -> "SyncManager":
+    def from_config(cls, config_path: str | None = None) -> SyncManager:
         """
         Create SyncManager from config file.
 
@@ -57,7 +58,7 @@ class SyncManager:
         config = AppConfig.from_json(config_path)
         return cls(config)
 
-    async def start(self, mode: str | None = None) -> None:
+    async def start(self, mode: ClipboardSyncMode | None = None) -> None:
         """
         Start clipboard synchronization.
 
@@ -65,7 +66,7 @@ class SyncManager:
             mode: Sync mode ('auto' or 'manual'), uses config if not provided
         """
         if mode:
-            self.config.clipboard.mode = mode
+            self.config.clipboard.sync_mode = mode
 
         # Connect with retry
         connected = await self._connect_with_retry()
@@ -74,9 +75,9 @@ class SyncManager:
             return
 
         # Start mode-specific sync
-        if self.config.clipboard.mode == "auto":
+        if self.config.clipboard.sync_mode == ClipboardSyncMode.AUTO:
             await self._start_auto_mode()
-        elif self.config.clipboard.mode == "manual":
+        elif self.config.clipboard.sync_mode == ClipboardSyncMode.MANUAL:
             await self._start_manual_mode()
 
     async def _connect_with_retry(self) -> bool:
@@ -97,9 +98,9 @@ class SyncManager:
     async def stop(self) -> None:
         """Stop clipboard synchronization."""
         try:
-            if self.config.clipboard.mode == "auto":
+            if self.config.clipboard.sync_mode == ClipboardSyncMode.AUTO:
                 await self.clipboard_service.stop_monitoring()
-            elif self.config.clipboard.mode == "manual" and self.hotkey_service:
+            elif self.config.clipboard.sync_mode == ClipboardSyncMode.MANUAL and self.hotkey_service:
                 self.hotkey_service.stop()
 
             await self.ws_service.disconnect()
@@ -111,7 +112,7 @@ class SyncManager:
         print_info("Auto mode: monitoring clipboard...")
 
         async def on_clipboard_change(content: str) -> None:
-            await self.ws_service.send_clipboard(content, source="auto")
+            await self.ws_service.send_clipboard(content, source=ClipboardSyncMode.AUTO)
             print_success(f"Sent clipboard: {len(content)} chars")
 
         await self.clipboard_service.start_monitoring(on_clipboard_change)
@@ -126,13 +127,16 @@ class SyncManager:
         async def send_current_clipboard() -> None:
             content = self.clipboard_service.get()
             if content:
-                await self.ws_service.send_clipboard(content, source="manual")
+                await self.ws_service.send_clipboard(content, source=ClipboardSyncMode.MANUAL)
                 print_success(f"Sent clipboard: {len(content)} chars")
             else:
                 print_warning("Clipboard is empty")
 
         # Start hotkey registration in background to avoid blocking
         async def setup_hotkeys() -> None:
+            if self.hotkey_service is None:
+                return
+
             try:
                 await self.hotkey_service.register(self.config.clipboard.hotkey, send_current_clipboard)
                 await self.hotkey_service.start()
@@ -153,20 +157,25 @@ class SyncManager:
 
     async def _maintain_connection(self) -> None:
         """Maintain WebSocket connection and listen for messages."""
-        try:
-            await self.ws_service.receive_loop(self.config.clipboard.mode)
-        except (KeyboardInterrupt, asyncio.CancelledError):
-            pass
+        with suppress(KeyboardInterrupt, asyncio.CancelledError):
+            await self.ws_service.receive_loop(self.config.clipboard.sync_mode)
 
-    async def _on_clipboard_received(self, msg: ClipboardTextMessage) -> None:
+    async def _on_clipboard_received(self, message: BaseMessage) -> None:
         """
         Handle received clipboard content from peer.
 
         Args:
-            msg: Clipboard message from peer
+            message: Clipboard message from peer
         """
-        success = self.clipboard_service.set(msg.content)
+        # Type guard: only process ClipboardTextMessage
+        if not isinstance(message, ClipboardTextMessage):
+            return
+
+        # After isinstance check, msg is narrowed to ClipboardTextMessage
+        success = self.clipboard_service.set(message.content)
         if success:
-            print_success(f"Received clipboard from {msg.from_peer} ({msg.source}): {len(msg.content)} chars")
+            print_success(
+                f"Received clipboard from {message.from_peer} ({message.source}): {len(message.content)} chars"
+            )
         else:
             print_error("Failed to write clipboard")

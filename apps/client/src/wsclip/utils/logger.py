@@ -6,6 +6,8 @@ from rich.console import Console
 from rich.logging import RichHandler
 from rich.theme import Theme
 
+from wsclip.config.settings import Settings
+
 # Custom theme for console output
 CUSTOM_THEME = Theme(
     {
@@ -22,7 +24,7 @@ CUSTOM_THEME = Theme(
 console = Console(theme=CUSTOM_THEME)
 
 
-def setup_logger(name: str, level: str = "INFO") -> logging.Logger:
+def setup_logger(name: str, level: str = Settings.DEFAULT_LOG_LEVEL) -> logging.Logger:
     """
     Setup a Rich logger with custom formatting.
 

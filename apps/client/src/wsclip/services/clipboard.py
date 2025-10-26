@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Awaitable
 import asyncio
+from collections.abc import Awaitable, Callable
+from contextlib import suppress
+
 import pyperclip
 
+from wsclip.config.settings import Settings
 from wsclip.utils.logger import setup_logger
 
 
@@ -14,8 +17,8 @@ class ClipboardService:
 
     def __init__(
         self,
-        poll_interval: float = 0.5,
-        max_size_bytes: int = 1048576,  # 1MB
+        poll_interval: float = Settings.DEFAULT_CLIPBOARD_POLL_INTERVAL,
+        max_size_bytes: int = Settings.MAX_MESSAGE_SIZE,
     ):
         """
         Initialize clipboard service.
@@ -90,11 +93,7 @@ class ClipboardService:
             self.logger.error(f"Clipboard content too large: {size_mb:.2f}MB (maximum: {max_mb:.1f}MB)")
             return True
 
-        # Ignore if same as last seen
-        if content == self._last_content:
-            return True
-
-        return False
+        return content == self._last_content
 
     async def start_monitoring(self, on_change: Callable[[str], Awaitable[None]]) -> None:
         """
@@ -118,10 +117,8 @@ class ClipboardService:
 
         if self._monitor_task:
             self._monitor_task.cancel()
-            try:
+            with suppress(asyncio.CancelledError):
                 await self._monitor_task
-            except asyncio.CancelledError:
-                pass
             self._monitor_task = None
 
     async def _monitor_loop(self, on_change: Callable[[str], Awaitable[None]]) -> None:

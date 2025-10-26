@@ -2,23 +2,40 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, asdict
-from typing import Literal
-from datetime import datetime, timezone
+from dataclasses import asdict, dataclass, field
+from datetime import UTC, datetime
+from enum import Enum
 
-# Type aliases for message types
-MessageType = Literal[
-    "auth",
-    "auth_response",
-    "text_message",
-    "clipboard_text",
-    "peer_connected",
-    "peer_disconnected",
-    "heartbeat",
-    "error",
-]
+from wsclip.config.constants import MessageField
 
-ErrorCode = Literal["TOKEN_INVALID", "PEER_LIMIT", "ALREADY_CONNECTED", "INTERNAL_ERROR"]
+
+class MessageType(str, Enum):
+    """WebSocket message types."""
+
+    AUTH = "auth"
+    AUTH_RESPONSE = "auth_response"
+    TEXT_MESSAGE = "text_message"
+    CLIPBOARD_TEXT = "clipboard_text"
+    PEER_CONNECTED = "peer_connected"
+    PEER_DISCONNECTED = "peer_disconnected"
+    HEARTBEAT = "heartbeat"
+    ERROR = "error"
+
+
+class ErrorCode(str, Enum):
+    """Error codes for error messages."""
+
+    TOKEN_INVALID = "TOKEN_INVALID"
+    PEER_LIMIT = "PEER_LIMIT"
+    ALREADY_CONNECTED = "ALREADY_CONNECTED"
+    INTERNAL_ERROR = "INTERNAL_ERROR"
+
+
+class ClipboardSyncMode(str, Enum):
+    """Clipboard synchronization mode."""
+
+    AUTO = "auto"
+    MANUAL = "manual"
 
 
 @dataclass
@@ -26,14 +43,14 @@ class BaseMessage:
     """Base message class with common fields."""
 
     type: MessageType
-    timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    timestamp: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
 
 
 @dataclass
 class AuthMessage(BaseMessage):
     """Authentication request message."""
 
-    type: Literal["auth"] = "auth"
+    type: MessageType = MessageType.AUTH
     token: str = ""
     peer_id: str = ""
 
@@ -42,7 +59,7 @@ class AuthMessage(BaseMessage):
 class AuthResponseMessage(BaseMessage):
     """Authentication response message."""
 
-    type: Literal["auth_response"] = "auth_response"
+    type: MessageType = MessageType.AUTH_RESPONSE
     success: bool = False
     session_id: str | None = None
     paired_peer: str | None = None
@@ -53,7 +70,7 @@ class AuthResponseMessage(BaseMessage):
 class TextMessage(BaseMessage):
     """Text message between peers."""
 
-    type: Literal["text_message"] = "text_message"
+    type: MessageType = MessageType.TEXT_MESSAGE
     from_peer: str = field(default="", metadata={"json_key": "from"})
     content: str = ""
     message_id: str = ""
@@ -63,18 +80,18 @@ class TextMessage(BaseMessage):
 class ClipboardTextMessage(BaseMessage):
     """Clipboard text content message."""
 
-    type: Literal["clipboard_text"] = "clipboard_text"
+    type: MessageType = MessageType.CLIPBOARD_TEXT
     from_peer: str = field(default="", metadata={"json_key": "from"})
     content: str = ""
     message_id: str = ""
-    source: Literal["auto", "manual"] = "manual"
+    source: ClipboardSyncMode = ClipboardSyncMode.MANUAL
 
 
 @dataclass
 class PeerEventMessage(BaseMessage):
     """Peer connection/disconnection event."""
 
-    type: Literal["peer_connected", "peer_disconnected"] = "peer_connected"
+    type: MessageType = MessageType.PEER_CONNECTED
     peer_id: str = ""
 
 
@@ -82,7 +99,7 @@ class PeerEventMessage(BaseMessage):
 class HeartbeatMessage(BaseMessage):
     """Heartbeat/ping message to keep connection alive."""
 
-    type: Literal["heartbeat"] = "heartbeat"
+    type: MessageType = MessageType.HEARTBEAT
     peer_id: str = ""
 
 
@@ -90,67 +107,78 @@ class HeartbeatMessage(BaseMessage):
 class ErrorMessage(BaseMessage):
     """Error message."""
 
-    type: Literal["error"] = "error"
-    code: ErrorCode = "INTERNAL_ERROR"
+    type: MessageType = MessageType.ERROR
+    code: ErrorCode = ErrorCode.INTERNAL_ERROR
     message: str = ""
 
 
 # Utility functions for message serialization
-def message_to_dict(msg: BaseMessage) -> dict[str, object]:
+def message_to_dict(message: BaseMessage) -> dict[str, object]:
     """Convert message to dictionary for JSON serialization."""
-    result = asdict(msg)
+    result = asdict(message)
 
     # Handle 'from_peer' -> 'from' mapping
     if "from_peer" in result:
-        result["from"] = result.pop("from_peer")
+        result[MessageField.FROM] = result.pop("from_peer")
 
     return result
 
 
 def dict_to_message(data: dict[str, object]) -> BaseMessage:
     """Convert dictionary to appropriate message class."""
-    msg_type = data.get("type")
-    timestamp = str(data.get("timestamp", ""))
+    message_type = data.get(MessageField.TYPE)
+    timestamp = str(data.get(MessageField.TIMESTAMP, ""))
 
-    if msg_type == "auth":
-        return AuthMessage(token=str(data.get("token", "")), peer_id=str(data.get("peer_id", "")), timestamp=timestamp)
-    elif msg_type == "auth_response":
+    if message_type == MessageType.AUTH.value:
+        return AuthMessage(
+            token=str(data.get(MessageField.TOKEN, "")),
+            peer_id=str(data.get(MessageField.PEER_ID, "")),
+            timestamp=timestamp,
+        )
+    elif message_type == MessageType.AUTH_RESPONSE.value:
         return AuthResponseMessage(
-            success=bool(data.get("success", False)),
-            session_id=str(data["session_id"]) if data.get("session_id") else None,
-            paired_peer=str(data["paired_peer"]) if data.get("paired_peer") else None,
-            error=str(data["error"]) if data.get("error") else None,
+            success=bool(data.get(MessageField.SUCCESS, False)),
+            session_id=str(data[MessageField.SESSION_ID]) if data.get(MessageField.SESSION_ID) else None,
+            paired_peer=str(data[MessageField.PAIRED_PEER]) if data.get(MessageField.PAIRED_PEER) else None,
+            error=str(data[MessageField.ERROR]) if data.get(MessageField.ERROR) else None,
             timestamp=timestamp,
         )
-    elif msg_type == "text_message":
+    elif message_type == MessageType.TEXT_MESSAGE.value:
         return TextMessage(
-            from_peer=str(data.get("from", "")),
-            content=str(data.get("content", "")),
-            message_id=str(data.get("message_id", "")),
+            from_peer=str(data.get(MessageField.FROM, "")),
+            content=str(data.get(MessageField.CONTENT, "")),
+            message_id=str(data.get(MessageField.MESSAGE_ID, "")),
             timestamp=timestamp,
         )
-    elif msg_type == "clipboard_text":
-        source_val = data.get("source", "manual")
-        source: Literal["auto", "manual"] = "manual" if source_val == "manual" else "auto"
+    elif message_type == MessageType.CLIPBOARD_TEXT.value:
+        source_value = data.get(MessageField.SOURCE, ClipboardSyncMode.MANUAL.value)
+        source = ClipboardSyncMode.MANUAL if source_value == ClipboardSyncMode.MANUAL.value else ClipboardSyncMode.AUTO
         return ClipboardTextMessage(
-            from_peer=str(data.get("from", "")),
-            content=str(data.get("content", "")),
-            message_id=str(data.get("message_id", "")),
+            from_peer=str(data.get(MessageField.FROM, "")),
+            content=str(data.get(MessageField.CONTENT, "")),
+            message_id=str(data.get(MessageField.MESSAGE_ID, "")),
             source=source,
             timestamp=timestamp,
         )
-    elif msg_type in ["peer_connected", "peer_disconnected"]:
-        peer_type: Literal["peer_connected", "peer_disconnected"] = (
-            "peer_connected" if msg_type == "peer_connected" else "peer_disconnected"
+    elif message_type in (MessageType.PEER_CONNECTED.value, MessageType.PEER_DISCONNECTED.value):
+        peer_type = (
+            MessageType.PEER_CONNECTED
+            if message_type == MessageType.PEER_CONNECTED.value
+            else MessageType.PEER_DISCONNECTED
         )
-        return PeerEventMessage(type=peer_type, peer_id=str(data.get("peer_id", "")), timestamp=timestamp)
-    elif msg_type == "heartbeat":
-        return HeartbeatMessage(peer_id=str(data.get("peer_id", "")), timestamp=timestamp)
-    elif msg_type == "error":
-        code_val = data.get("code", "INTERNAL_ERROR")
-        code: ErrorCode = "INTERNAL_ERROR"
-        if code_val in ["TOKEN_INVALID", "PEER_LIMIT", "ALREADY_CONNECTED", "INTERNAL_ERROR"]:
-            code = code_val  # type: ignore
-        return ErrorMessage(code=code, message=str(data.get("message", "")), timestamp=timestamp)
+        return PeerEventMessage(type=peer_type, peer_id=str(data.get(MessageField.PEER_ID, "")), timestamp=timestamp)
+    elif message_type == MessageType.HEARTBEAT.value:
+        return HeartbeatMessage(peer_id=str(data.get(MessageField.PEER_ID, "")), timestamp=timestamp)
+    elif message_type == MessageType.ERROR.value:
+        code_value = data.get(MessageField.CODE, ErrorCode.INTERNAL_ERROR.value)
+        code = ErrorCode.INTERNAL_ERROR
+        # Validate and convert to enum
+        if code_value == ErrorCode.TOKEN_INVALID.value:
+            code = ErrorCode.TOKEN_INVALID
+        elif code_value == ErrorCode.PEER_LIMIT.value:
+            code = ErrorCode.PEER_LIMIT
+        elif code_value == ErrorCode.ALREADY_CONNECTED.value:
+            code = ErrorCode.ALREADY_CONNECTED
+        return ErrorMessage(code=code, message=str(data.get(MessageField.MESSAGE, "")), timestamp=timestamp)
     else:
-        raise ValueError(f"Unknown message type: {msg_type}")
+        raise ValueError(f"Unknown message type: {message_type}")

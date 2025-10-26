@@ -1,24 +1,20 @@
-"""Application constants."""
+"""Application constants"""
 
-# Message types
-MSG_AUTH = "auth"
-MSG_AUTH_RESPONSE = "auth_response"
-MSG_TEXT = "text_message"
-MSG_CLIPBOARD = "clipboard_text"
-MSG_PEER_CONNECTED = "peer_connected"
-MSG_PEER_DISCONNECTED = "peer_disconnected"
-MSG_ERROR = "error"
 
-# Error codes
-ERR_TOKEN_INVALID = "TOKEN_INVALID"
-ERR_PEER_LIMIT = "PEER_LIMIT"
-ERR_ALREADY_CONNECTED = "ALREADY_CONNECTED"
-ERR_INTERNAL_ERROR = "INTERNAL_ERROR"
+class MessageField:
+    """JSON field name constants for WebSocket messages."""
 
-# WebSocket connection settings (imported from settings)
-from wsclip.config.settings import Settings
-
-WS_CONNECT_TIMEOUT = Settings.WS_CONNECT_TIMEOUT
-WS_PING_INTERVAL = Settings.WS_PING_INTERVAL
-WS_PING_TIMEOUT = Settings.WS_PING_TIMEOUT
-WS_HEARTBEAT_INTERVAL = Settings.WS_HEARTBEAT_INTERVAL
+    TYPE = "type"
+    TIMESTAMP = "timestamp"
+    TOKEN = "token"
+    PEER_ID = "peer_id"
+    SESSION_ID = "session_id"
+    PAIRED_PEER = "paired_peer"
+    SUCCESS = "success"
+    ERROR = "error"
+    FROM = "from"
+    CONTENT = "content"
+    MESSAGE_ID = "message_id"
+    SOURCE = "source"
+    CODE = "code"
+    MESSAGE = "message"

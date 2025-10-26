@@ -3,15 +3,21 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable, Awaitable
+from collections.abc import Awaitable, Callable
 
-from wsclip.utils.logger import setup_logger, print_warning, print_success
+from wsclip.config.settings import Settings
+from wsclip.utils.logger import print_success, print_warning, setup_logger
 
 
 class ReconnectionStrategy:
     """Handles automatic reconnection with exponential backoff."""
 
-    def __init__(self, initial_delay: float = 1.0, max_delay: float = 30.0, max_attempts: int = 10):
+    def __init__(
+        self,
+        initial_delay: float = Settings.RECONNECT_INITIAL_DELAY,
+        max_delay: float = Settings.RECONNECT_MAX_DELAY,
+        max_attempts: int = Settings.DEFAULT_RECONNECT_MAX_ATTEMPTS,
+    ):
         """
         Initialize reconnection strategy.
 
@@ -29,13 +35,13 @@ class ReconnectionStrategy:
         self._current_delay = initial_delay
 
     def reset(self) -> None:
-        """Reset reconnection state after successful connection."""
+        """Reset reconnection state after a successful connection."""
         self._attempt_count = 0
         self._current_delay = self.initial_delay
 
     def get_next_delay(self) -> float:
         """
-        Calculate next reconnection delay with exponential backoff.
+        Calculate the next reconnection delay with exponential backoff.
 
         Returns:
             Delay in seconds, or -1 if max attempts exceeded

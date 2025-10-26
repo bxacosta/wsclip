@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal
 
+from wsclip.config.settings import Settings
+from wsclip.models.messages import ClipboardSyncMode
 from wsclip.utils.paths import get_config_file
 
 
@@ -14,8 +15,8 @@ from wsclip.utils.paths import get_config_file
 class ReconnectConfig:
     """Reconnection configuration."""
 
-    enabled: bool = True
-    max_attempts: int = 10
+    enabled: bool = Settings.DEFAULT_RECONNECT_ENABLED
+    max_attempts: int = Settings.DEFAULT_RECONNECT_MAX_ATTEMPTS
 
 
 @dataclass
@@ -25,22 +26,17 @@ class ConnectionConfig:
     worker_url: str = ""
     peer_id: str = ""
     token: str = ""
-    reconnect: ReconnectConfig | None = None
-
-    def __post_init__(self) -> None:
-        """Initialize nested configs with defaults."""
-        if self.reconnect is None:
-            self.reconnect = ReconnectConfig()
+    reconnect: ReconnectConfig = field(default_factory=ReconnectConfig)
 
 
 @dataclass
 class ClipboardConfig:
     """Clipboard configuration."""
 
-    mode: Literal["auto", "manual"] = "manual"
-    hotkey: str = "<alt>+<shift>+<enter>"
-    poll_interval: float = 0.5
-    max_size_mb: int = 1
+    sync_mode: ClipboardSyncMode = Settings.DEFAULT_CLIPBOARD_MODE
+    hotkey: str = Settings.DEFAULT_CLIPBOARD_HOTKEY
+    poll_interval: float = Settings.DEFAULT_CLIPBOARD_POLL_INTERVAL
+    max_size_mb: int = Settings.DEFAULT_CLIPBOARD_MAX_SIZE_MB
 
 
 @dataclass
@@ -55,44 +51,28 @@ class ProxyAuthConfig:
 class ProxyConfig:
     """Proxy configuration."""
 
-    enabled: bool = False
-    host: str = "localhost"
-    port: int = 1080
-    type: str = "socks5"
-    auth: ProxyAuthConfig | None = None
-
-    def __post_init__(self) -> None:
-        """Initialize nested configs with defaults."""
-        if self.auth is None:
-            self.auth = ProxyAuthConfig()
+    enabled: bool = Settings.DEFAULT_PROXY_ENABLED
+    host: str = Settings.DEFAULT_PROXY_HOST
+    port: int = Settings.DEFAULT_PROXY_PORT
+    type: str = Settings.DEFAULT_PROXY_TYPE
+    auth: ProxyAuthConfig = field(default_factory=ProxyAuthConfig)
 
 
 @dataclass
 class LoggingConfig:
     """Logging configuration."""
 
-    level: str = "INFO"
+    level: str = Settings.DEFAULT_LOG_LEVEL
 
 
 @dataclass
 class AppConfig:
     """Application configuration with hierarchical structure."""
 
-    connection: ConnectionConfig | None = None
-    clipboard: ClipboardConfig | None = None
-    proxy: ProxyConfig | None = None
-    logging: LoggingConfig | None = None
-
-    def __post_init__(self) -> None:
-        """Initialize nested configs with defaults."""
-        if self.connection is None:
-            self.connection = ConnectionConfig()
-        if self.clipboard is None:
-            self.clipboard = ClipboardConfig()
-        if self.proxy is None:
-            self.proxy = ProxyConfig()
-        if self.logging is None:
-            self.logging = LoggingConfig()
+    connection: ConnectionConfig = field(default_factory=ConnectionConfig)
+    clipboard: ClipboardConfig = field(default_factory=ClipboardConfig)
+    proxy: ProxyConfig = field(default_factory=ProxyConfig)
+    logging: LoggingConfig = field(default_factory=LoggingConfig)
 
     @classmethod
     def from_json(cls, file_path: str | Path | None = None) -> AppConfig:
@@ -119,10 +99,10 @@ class AppConfig:
             raise FileNotFoundError(f"Config file not found: {path}\nRun 'wsclip init' to create a configuration file.")
 
         try:
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 data = json.load(f)
         except json.JSONDecodeError as e:
-            raise json.JSONDecodeError(f"Invalid JSON in config file {path}: {e.msg}", e.doc, e.pos)
+            raise json.JSONDecodeError(f"Invalid JSON in config file {path}: {e.msg}", e.doc, e.pos) from e
 
         # Parse nested structures
         connection_data = data.get("connection", {})
@@ -132,30 +112,30 @@ class AppConfig:
             peer_id=connection_data.get("peer_id", ""),
             token=connection_data.get("token", ""),
             reconnect=ReconnectConfig(
-                enabled=reconnect_data.get("enabled", True),
-                max_attempts=reconnect_data.get("max_attempts", 10),
+                enabled=reconnect_data.get("enabled", Settings.DEFAULT_RECONNECT_ENABLED),
+                max_attempts=reconnect_data.get("max_attempts", Settings.DEFAULT_RECONNECT_MAX_ATTEMPTS),
             ),
         )
 
         clipboard_data = data.get("clipboard", {})
-        clipboard = ClipboardConfig(
-            mode=clipboard_data.get("mode", "manual"),
-            hotkey=clipboard_data.get("hotkey", "<alt>+<shift>+<enter>"),
-            poll_interval=clipboard_data.get("poll_interval", 0.5),
-            max_size_mb=clipboard_data.get("max_size_mb", 1),
-        )
+        mode_str = clipboard_data.get("mode", "manual")
+        # Convert string to enum
+        mode = ClipboardSyncMode.MANUAL if mode_str == "manual" else ClipboardSyncMode.AUTO
 
-        # Validate clipboard mode
-        if clipboard.mode not in ("auto", "manual"):
-            raise ValueError(f"Invalid clipboard mode: {clipboard.mode}. Must be 'auto' or 'manual'.")
+        clipboard = ClipboardConfig(
+            sync_mode=mode,
+            hotkey=clipboard_data.get("hotkey", Settings.DEFAULT_CLIPBOARD_HOTKEY),
+            poll_interval=clipboard_data.get("poll_interval", Settings.DEFAULT_CLIPBOARD_POLL_INTERVAL),
+            max_size_mb=clipboard_data.get("max_size_mb", Settings.DEFAULT_CLIPBOARD_MAX_SIZE_MB),
+        )
 
         proxy_data = data.get("proxy", {})
         auth_data = proxy_data.get("auth", {})
         proxy = ProxyConfig(
-            enabled=proxy_data.get("enabled", False),
-            host=proxy_data.get("host", "localhost"),
-            port=proxy_data.get("port", 1080),
-            type=proxy_data.get("type", "socks5"),
+            enabled=proxy_data.get("enabled", Settings.DEFAULT_PROXY_ENABLED),
+            host=proxy_data.get("host", Settings.DEFAULT_PROXY_HOST),
+            port=proxy_data.get("port", Settings.DEFAULT_PROXY_PORT),
+            type=proxy_data.get("type", Settings.DEFAULT_PROXY_TYPE),
             auth=ProxyAuthConfig(
                 username=auth_data.get("username"),
                 password=auth_data.get("password"),
@@ -163,7 +143,7 @@ class AppConfig:
         )
 
         logging_data = data.get("logging", {})
-        logging = LoggingConfig(level=logging_data.get("level", "INFO"))
+        logging = LoggingConfig(level=logging_data.get("level", Settings.DEFAULT_LOG_LEVEL))
 
         return cls(
             connection=connection,
@@ -191,35 +171,31 @@ class AppConfig:
         # Convert to dict with proper structure
         data = {
             "connection": {
-                "worker_url": self.connection.worker_url if self.connection else "",
-                "peer_id": self.connection.peer_id if self.connection else "",
-                "token": self.connection.token if self.connection else "",
+                "worker_url": self.connection.worker_url,
+                "peer_id": self.connection.peer_id,
+                "token": self.connection.token,
                 "reconnect": {
-                    "enabled": self.connection.reconnect.enabled
-                    if self.connection and self.connection.reconnect
-                    else True,
-                    "max_attempts": self.connection.reconnect.max_attempts
-                    if self.connection and self.connection.reconnect
-                    else 10,
+                    "enabled": self.connection.reconnect.enabled,
+                    "max_attempts": self.connection.reconnect.max_attempts,
                 },
             },
             "clipboard": {
-                "mode": self.clipboard.mode if self.clipboard else "manual",
-                "hotkey": self.clipboard.hotkey if self.clipboard else "<alt>+<shift>+<enter>",
-                "poll_interval": self.clipboard.poll_interval if self.clipboard else 0.5,
-                "max_size_mb": self.clipboard.max_size_mb if self.clipboard else 1,
+                "mode": self.clipboard.sync_mode.value,
+                "hotkey": self.clipboard.hotkey,
+                "poll_interval": self.clipboard.poll_interval,
+                "max_size_mb": self.clipboard.max_size_mb,
             },
             "proxy": {
-                "enabled": self.proxy.enabled if self.proxy else False,
-                "host": self.proxy.host if self.proxy else "localhost",
-                "port": self.proxy.port if self.proxy else 1080,
-                "type": self.proxy.type if self.proxy else "socks5",
+                "enabled": self.proxy.enabled,
+                "host": self.proxy.host,
+                "port": self.proxy.port,
+                "type": self.proxy.type,
                 "auth": {
-                    "username": self.proxy.auth.username if self.proxy and self.proxy.auth else None,
-                    "password": self.proxy.auth.password if self.proxy and self.proxy.auth else None,
+                    "username": self.proxy.auth.username,
+                    "password": self.proxy.auth.password,
                 },
             },
-            "logging": {"level": self.logging.level if self.logging else "INFO"},
+            "logging": {"level": self.logging.level},
         }
 
         try:

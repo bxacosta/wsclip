@@ -2,7 +2,7 @@
 
 import click
 
-from wsclip.cli.commands import start_command, status_command, init_command
+from wsclip.cli.commands import init_command, start_command, status_command
 
 
 @click.group()
