@@ -9,6 +9,7 @@ from pathlib import Path
 import click
 from rich.table import Table
 
+from wsclip.config.settings import Settings
 from wsclip.core.pairing import PairingManager
 from wsclip.core.sync_manager import SyncManager
 from wsclip.models.config import AppConfig
@@ -28,34 +29,26 @@ def get_or_generate_peer_id(config: AppConfig) -> str:
 
 @click.command()
 @click.option(
-    "--mode",
-    type=click.Choice([mode.value for mode in ClipboardSyncMode]),
-    default=ClipboardSyncMode.MANUAL.value,
-    help="Clipboard sync mode",
-)
-@click.option("--token", default=None, help="Pairing token (optional)")
-@click.option(
     "--config",
     type=click.Path(exists=True, path_type=Path),
     default=None,
     help="Config file path (default: ~/.config/wsclip/config.json)",
 )
-def start_command(mode: str, token: str | None, config: Path | None) -> None:
+@click.option(
+    "--mode",
+    type=click.Choice([mode.value for mode in ClipboardSyncMode]),
+    default=ClipboardSyncMode.MANUAL.value,
+    help="Clipboard sync mode",
+)
+@click.option("--token", default=None, help="Pairing token")
+def start_command(config: Path | None, mode: str, token: str | None) -> None:
     """
     Start clipboard sync with a specified mode.
-
-    Token precedence:
-    1. --token parameter: use and save to config
-    2. config.json token: use that
-    3. None: generate new token and save to config
     """
 
-    # Convert string to enum
-    sync_mode = ClipboardSyncMode.AUTO if mode == ClipboardSyncMode.AUTO.value else ClipboardSyncMode.MANUAL
+    config_path: Path = config or get_config_file()
+    sync_mode: ClipboardSyncMode = ClipboardSyncMode(mode) or Settings.DEFAULT_CLIPBOARD_MODE
 
-    config_path: Path = get_config_file() if config is None else config
-
-    # Load or create config
     if config_path.exists():
         try:
             app_config = AppConfig.from_json(config_path)
@@ -63,7 +56,6 @@ def start_command(mode: str, token: str | None, config: Path | None) -> None:
             print_error(f"Error loading config: {e}")
             sys.exit(1)
     else:
-        # No config found: launch interactive wizard
         print_info("No configuration found. Launching configuration wizard...")
         print_info("(You can reconfigure anytime with 'wsclip config')\n")
 
@@ -76,7 +68,7 @@ def start_command(mode: str, token: str | None, config: Path | None) -> None:
         # Import and run wizard
         from wsclip.cli.config_wizard import ConfigWizard
 
-        wizard = ConfigWizard(existing_config=None)
+        wizard = ConfigWizard()
         app_config = wizard.run(full_mode=False, new_config=True)
         app_config.save(config_path)
 
@@ -193,7 +185,7 @@ def config_command(full: bool, new: bool) -> None:
     """Interactive configuration wizard."""
     from wsclip.cli.config_wizard import ConfigWizard
 
-    config_path = get_config_file()
+    config_path: Path = get_config_file()
 
     # Ensure config directory exists
     try:

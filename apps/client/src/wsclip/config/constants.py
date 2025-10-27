@@ -1,6 +1,46 @@
 """Application constants"""
 
 
+class ConfigField:
+    """JSON field name constants for app config."""
+
+    # Top-level fields
+    CONNECTION = "connection"
+    CLIPBOARD = "clipboard"
+    PROXY = "proxy"
+    LOGGING = "logging"
+
+    # 'connection' fields
+    WORKER_URL = "worker_url"
+    PEER_ID = "peer_id"
+    TOKEN = "token"
+    RECONNECT = "reconnect"
+
+    # 'connection.reconnect' fields
+    RECONNECT_ENABLED = "enabled"
+    RECONNECT_MAX_ATTEMPTS = "max_attempts"
+
+    # 'clipboard' fields
+    CLIPBOARD_MODE = "mode"
+    CLIPBOARD_HOTKEY = "hotkey"
+    CLIPBOARD_POLL_INTERVAL = "poll_interval"
+    CLIPBOARD_MAX_SIZE_MB = "max_size_mb"
+
+    # 'proxy' fields
+    PROXY_ENABLED = "enabled"
+    PROXY_HOST = "host"
+    PROXY_PORT = "port"
+    PROXY_TYPE = "type"
+    PROXY_AUTH = "auth"
+
+    # 'proxy.auth' fields
+    PROXY_AUTH_USERNAME = "username"
+    PROXY_AUTH_PASSWORD = "password"
+
+    # 'logging' fields
+    LOGGING_LEVEL = "level"
+
+
 class Theme:
     """Monochrome color scheme for elegant terminal display."""
 

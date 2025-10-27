@@ -5,7 +5,7 @@ import click
 from wsclip.cli.commands import config_command, start_command, status_command
 
 
-@click.group()
+@click.group(context_settings={"max_content_width": 100})
 @click.version_option(version="0.0.2")
 def cli() -> None:
     """

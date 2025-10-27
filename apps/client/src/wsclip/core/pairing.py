@@ -21,7 +21,7 @@ class PairingManager:
             config: Application configuration
         """
         self.config = config
-        self.api_url = config.connection.worker_url.replace("wss://", "https://").replace("/ws", "")
+        self.api_url = config.connection.api_url()
 
     def generate_token(self) -> str | None:
         """
