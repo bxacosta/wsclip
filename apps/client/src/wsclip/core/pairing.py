@@ -7,7 +7,6 @@ from pathlib import Path
 import requests
 
 from wsclip.models.config import AppConfig
-from wsclip.utils.logger import print_error, print_success
 
 
 class PairingManager:
@@ -40,10 +39,8 @@ class PairingManager:
             self.config.connection.token = token
             self.config.save()
 
-            print_success(f"Generated token: {token}")
             return token
-        except requests.RequestException as e:
-            print_error(f"Failed to generate token: {e}")
+        except requests.RequestException:
             return None
 
     def join_with_token(self, token: str, config_path: Path) -> bool:
@@ -60,8 +57,6 @@ class PairingManager:
         try:
             self.config.connection.token = token
             self.config.save(config_path)
-            print_success(f"Joined with token: {token}")
             return True
-        except Exception as e:
-            print_error(f"Failed to save token: {e}")
+        except Exception:
             return False

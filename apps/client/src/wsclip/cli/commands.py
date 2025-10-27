@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import sys
 from pathlib import Path
 
@@ -15,8 +16,21 @@ from wsclip.core.sync_manager import SyncManager
 from wsclip.models.config import AppConfig
 from wsclip.models.messages import ClipboardSyncMode
 from wsclip.utils.helpers import generate_peer_id
-from wsclip.utils.logger import console, print_error, print_info, print_success
+from wsclip.utils.logger import console, create_logger
 from wsclip.utils.paths import ensure_config_dir, get_config_file
+
+logger = create_logger(mode="console")
+
+
+def _cancel_pending_tasks(loop: asyncio.AbstractEventLoop) -> None:
+    """Cancel all pending tasks in the event loop."""
+    pending = asyncio.all_tasks(loop)
+    for task in pending:
+        task.cancel()
+    # Wait for all tasks to be cancelled
+    for task in pending:
+        with contextlib.suppress(asyncio.CancelledError, Exception):
+            loop.run_until_complete(task)
 
 
 def get_or_generate_peer_id(config: AppConfig) -> str:
@@ -41,7 +55,8 @@ def get_or_generate_peer_id(config: AppConfig) -> str:
     help="Clipboard sync mode",
 )
 @click.option("--token", default=None, help="Pairing token")
-def start_command(config: Path | None, mode: str, token: str | None) -> None:
+@click.option("--tui", is_flag=True, help="Enable TUI mode (default: console logs)")
+def start_command(config: Path | None, mode: str, token: str | None, tui: bool) -> None:
     """
     Start clipboard sync with a specified mode.
     """
@@ -53,16 +68,16 @@ def start_command(config: Path | None, mode: str, token: str | None) -> None:
         try:
             app_config = AppConfig.from_json(config_path)
         except (FileNotFoundError, ValueError) as e:
-            print_error(f"Error loading config: {e}")
+            logger.error(f"Error loading config: {e}")
             sys.exit(1)
     else:
-        print_info("No configuration found. Launching configuration wizard...")
-        print_info("(You can reconfigure anytime with 'wsclip config')\n")
+        logger.info("No configuration found. Launching configuration wizard...")
+        logger.info("(You can reconfigure anytime with 'wsclip config')")
 
         try:
             ensure_config_dir()
         except (PermissionError, OSError) as e:
-            print_error(f"Cannot create config directory: {e}")
+            logger.error(f"Cannot create config directory: {e}")
             sys.exit(1)
 
         # Import and run wizard
@@ -72,62 +87,60 @@ def start_command(config: Path | None, mode: str, token: str | None) -> None:
         app_config = wizard.run(full_mode=False, new_config=True)
         app_config.save(config_path)
 
-        print_success(f"Configuration saved to {config_path}\n")
-
-    # Token resolution with precedence
-    pairing = PairingManager(app_config)
-
-    if token:
-        # Priority 1: --token parameter
-        pairing.join_with_token(token, config_path)
-    elif not app_config.connection.token:
-        # Priority 3: Generate a new token
-        console.print("[cyan]Generating new token...[/cyan]")
-        generated_token = pairing.generate_token()
-
-        if not generated_token:
-            sys.exit(1)
-
-        console.print()
-        console.print("━" * 50, style="green")
-        console.print(f"  Generated Token: [bold green]{generated_token}[/bold green]", justify="center")
-        console.print("━" * 50, style="green")
-        console.print()
-        console.print("Share this token with the other peer:")
-        console.print(f"  [dim]wsclip start --mode {sync_mode.value} --token {generated_token}[/dim]")
-        console.print()
-    # else: Priority 2: use token from config.json
+        logger.info(f"Configuration saved to {config_path}")
 
     # Generate peer_id if not defined
     app_config.connection.peer_id = get_or_generate_peer_id(app_config)
     app_config.clipboard.sync_mode = sync_mode
 
-    # Create a sync manager
-    sync_manager = SyncManager(app_config)
+    # Create a sync manager with TUI mode
+    sync_manager = SyncManager(app_config, tui_mode=tui)
 
-    # Start with proper cleanup
+    # Start TUI if enabled (prevents flickering by starting before messages)
+    if tui and sync_manager.tui:
+        sync_manager.tui.start()
+
+    pairing = PairingManager(app_config)
+
+    if token:
+        # Priority 1: --token parameter
+        if pairing.join_with_token(token, config_path):
+            sync_manager.logger.info(f"Using token from parameter: {token}")
+        else:
+            sync_manager.logger.error("Failed to save token to config")
+    elif not app_config.connection.token:
+        generated_token = pairing.generate_token()
+
+        if not generated_token:
+            sync_manager.logger.error("Failed to generate token")
+            if sync_manager.tui:
+                sync_manager.tui.stop()
+            sys.exit(1)
+
+        sync_manager.logger.info(f"Generated Token: {generated_token}")
+        sync_manager.logger.info("Share this token with the other peer:")
+        sync_manager.logger.info(f"  wsclip start --mode {sync_mode.value} --token {generated_token}")
+    else:
+        sync_manager.logger.info(f"Using token from config: {app_config.connection.token}")
+
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 
     try:
         loop.run_until_complete(sync_manager.start())
     except KeyboardInterrupt:
-        pass
+        sync_manager.logger.info("Shutting down...")
+        _cancel_pending_tasks(loop)
+    except Exception as e:
+        sync_manager.logger.error(f"Unexpected error: {e}")
+        _cancel_pending_tasks(loop)
     finally:
-        # Cleanup
-        loop.run_until_complete(sync_manager.stop())
-
-        # Cancel all pending tasks
-        pending = asyncio.all_tasks(loop)
-        for task in pending:
-            task.cancel()
-
-        if pending:
-            # Wait for all canceled tasks to complete
-            loop.run_until_complete(asyncio.wait(pending, timeout=1.0))
-
-        loop.close()
-        sys.exit(0)
+        try:
+            loop.run_until_complete(sync_manager.stop())
+        except Exception:
+            pass
+        finally:
+            loop.close()
 
 
 @click.command()
@@ -142,15 +155,14 @@ def status_command(config: Path | None) -> None:
     config_path: Path = get_config_file() if config is None else config
 
     if not config_path.exists():
-        print_error(f"Config file not found: {config_path}")
-        print_info("Run 'wsclip init' to create a configuration file")
+        logger.error(f"Config file not found: {config_path}")
+        logger.info("Run 'wsclip init' to create a configuration file")
         return
 
-    # Load config
     try:
         app_config = AppConfig.from_json(config_path)
     except (FileNotFoundError, ValueError) as e:
-        print_error(f"Error loading config: {e}")
+        logger.error(f"Error loading config: {e}")
         return
 
     # Display status table
@@ -187,11 +199,10 @@ def config_command(full: bool, new: bool) -> None:
 
     config_path: Path = get_config_file()
 
-    # Ensure config directory exists
     try:
         ensure_config_dir()
     except (PermissionError, OSError) as e:
-        print_error(f"Cannot create config directory: {e}")
+        logger.error(f"Cannot create config directory: {e}")
         return
 
     # Load existing config if available (unless --new flag)
@@ -200,8 +211,8 @@ def config_command(full: bool, new: bool) -> None:
         try:
             existing_config = AppConfig.from_json(config_path)
         except (FileNotFoundError, ValueError) as e:
-            print_error(f"Error loading existing config: {e}")
-            print_info("Proceeding with new configuration...")
+            logger.error(f"Error loading existing config: {e}")
+            logger.info("Proceeding with new configuration...")
 
     # Run wizard
     wizard = ConfigWizard(existing_config=existing_config)
@@ -210,5 +221,6 @@ def config_command(full: bool, new: bool) -> None:
     # Save configuration
     config.save(config_path)
 
-    print_success(f"Configuration saved to {config_path}")
+    logger.info(f"Configuration saved to {config_path}")
     console.print("\n[dim]You can now use 'wsclip start --mode auto' or 'wsclip start --mode manual'[/dim]")
+

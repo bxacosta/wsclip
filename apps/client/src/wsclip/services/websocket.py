@@ -29,7 +29,7 @@ from wsclip.models.messages import (
     dict_to_message,
     message_to_dict,
 )
-from wsclip.utils.logger import print_error, print_info, print_message, print_success, print_warning, setup_logger
+from wsclip.utils.logger import AppLogger
 
 # Type alias for message handler
 MessageHandler = Callable[[BaseMessage], Awaitable[None]]
@@ -45,6 +45,7 @@ class WebSocketService:
         peer_id: str,
         log_level: str = Settings.DEFAULT_LOG_LEVEL,
         proxy: ProxyConfig | None = None,
+        logger: AppLogger | None = None,
     ):
         """
         Initialize WebSocket service.
@@ -55,12 +56,22 @@ class WebSocketService:
             peer_id: This peer's unique identifier
             log_level: Logging level
             proxy: Optional proxy configuration
+            logger: Application logger (for user-facing messages)
         """
         self.worker_url = worker_url
         self.token = token
         self.peer_id = peer_id
         self.proxy = proxy
-        self.logger = setup_logger(f"ws_service.{peer_id}", log_level)
+
+        # Unified logger (works for Console and TUI)
+        self.logger: AppLogger
+        if logger is None:
+            # Fallback to console logger if not provided
+            from wsclip.utils.logger import create_logger
+
+            self.logger = create_logger(mode="console", component_name="websocket", log_level=log_level)
+        else:
+            self.logger = logger
 
         self.websocket: ClientConnection | None = None
         self.authenticated = False
@@ -87,6 +98,7 @@ class WebSocketService:
             # Build WebSocket URL with query parameters
             ws_url = f"{self.worker_url}/ws?token={self.token}&peer_id={self.peer_id}"
 
+            self.logger.debug(f"Initiating connection - peer_id: {self.peer_id}, token: {self.token[:8]}...")
             self.logger.info(f"Connecting to {self.worker_url}...")
 
             # Parse URL to get destination host and port
@@ -96,7 +108,7 @@ class WebSocketService:
 
             # Validate hostname
             if not dest_host:
-                print_error("Invalid worker URL: hostname not found")
+                self.logger.error("Invalid worker URL: hostname not found")
                 return False
 
             # Prepare connection parameters
@@ -110,6 +122,10 @@ class WebSocketService:
             # Connect via SOCKS5 proxy if enabled
             if self.proxy and self.proxy.enabled:
                 try:
+                    self.logger.debug(
+                        f"Using SOCKS5 proxy: {self.proxy.host}:{self.proxy.port}, "
+                        f"auth: {bool(self.proxy.auth.username)}"
+                    )
                     self.logger.info(f"Connecting via SOCKS5 proxy {self.proxy.host}:{self.proxy.port}...")
 
                     # Build proxy URL
@@ -128,68 +144,109 @@ class WebSocketService:
                     self.websocket = await connect(ws_url, **connect_params_with_sock)
 
                 except ConnectionRefusedError:
-                    print_error(f"SOCKS5 proxy at {self.proxy.host}:{self.proxy.port} not responding")
+                    self.logger.error(f"SOCKS5 proxy at {self.proxy.host}:{self.proxy.port} not responding")
                     return False
                 except Exception as e:
-                    print_error(f"Proxy connection failed: {e}")
+                    self.logger.error(f"Proxy connection failed: {e}")
                     return False
             else:
                 # Direct connection (no proxy)
+                self.logger.debug(f"Direct connection to {dest_host}:{dest_port}")
                 self.websocket = await connect(ws_url, **connect_params)
 
+            self.logger.debug("WebSocket handshake completed successfully")
             self.logger.info("WebSocket connected, authenticating...")
 
             # Send authentication message
             auth_msg = AuthMessage(token=self.token, peer_id=self.peer_id)
+            self.logger.debug(f"Sending auth message: token={self.token[:8]}..., peer_id={self.peer_id}")
             await self._send_message(auth_msg)
 
             # Wait for auth response
+            self.logger.debug("Waiting for auth response from server...")
             response = await self._receive_message()
 
             if isinstance(response, AuthResponseMessage):
+                self.logger.debug(
+                    f"Auth response received: success={response.success}, "
+                    f"session_id={response.session_id}, paired_peer={response.paired_peer}"
+                )
                 if response.success:
                     self.authenticated = True
                     self.session_id = response.session_id
                     self.paired_peer = response.paired_peer
 
-                    print_success(f"Authenticated! Session: {self.session_id}")
+                    self.logger.info(f"Authenticated! Session: {self.session_id}")
 
                     if self.paired_peer:
-                        print_info(f"Paired with: {self.paired_peer}")
+                        self.logger.info(f"Paired with peer: {self.paired_peer}")
                     else:
-                        print_info("Waiting for peer to connect...")
+                        self.logger.info("Waiting for peer to connect...")
 
                     return True
                 else:
-                    print_error(f"Authentication failed: {response.error}")
+                    self.logger.error(f"Authentication failed: {response.error}")
                     return False
             else:
-                print_error(f"Unexpected response: {type(response)}")
+                self.logger.error(f"Unexpected response: {type(response)}")
                 return False
 
         except WebSocketException as e:
             self.logger.error(f"WebSocket error: {e}")
-            print_error(f"Connection failed: {e}")
+            self.logger.error(f"Connection failed: {e}")
             return False
         except Exception as e:
             self.logger.error(f"Unexpected error: {e}")
-            print_error(f"Failed to connect: {e}")
+            self.logger.error(f"Failed to connect: {e}")
             return False
 
     async def disconnect(self) -> None:
-        """Disconnect from WebSocket server."""
+        """Disconnect from WebSocket server with proper cleanup."""
+        self.logger.debug("Starting disconnect sequence...")
         self._running = False
 
+        # Step 1: Cancel heartbeat task first (if not already cancelled)
+        if self._heartbeat_task:
+            if self._heartbeat_task.done():
+                self.logger.debug("Heartbeat task already completed/cancelled")
+            else:
+                self.logger.debug("Cancelling heartbeat task...")
+                self._heartbeat_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await self._heartbeat_task
+                self.logger.debug("Heartbeat task cancelled")
+            self._heartbeat_task = None
+
+        # Step 2: Close WebSocket connection and cancel all internal tasks
         websocket = self.websocket
         if websocket:
             try:
-                await asyncio.wait_for(websocket.close(), timeout=2.0)
-            except (TimeoutError, Exception, asyncio.CancelledError):
-                pass
+                # Try graceful close with timeout (2s is reasonable for network roundtrip)
+                self.logger.debug("Attempting graceful WebSocket close (timeout: 2s)...")
+                await asyncio.wait_for(websocket.close(code=1000, reason="Client disconnect"), timeout=2.0)
+                self.logger.debug("WebSocket closed gracefully")
+            except (TimeoutError, asyncio.CancelledError):
+                # If timeout or cancelled, force close and cancel all websocket tasks
+                self.logger.debug("Graceful close timed out, forcing WebSocket closure")
+                try:
+                    # Get all tasks related to this websocket and cancel them
+                    current_tasks = [t for t in asyncio.all_tasks() if not t.done()]
+                    for task in current_tasks:
+                        # Cancel tasks that belong to websocket connection (keepalive, etc)
+                        if hasattr(task, "get_coro") and "keepalive" in str(task.get_coro()):
+                            task.cancel()
+                            self.logger.debug(f"Cancelled websocket internal task: {task.get_name()}")
+                except Exception as e:
+                    self.logger.debug(f"Error cancelling websocket tasks: {e}")
+            except Exception as e:
+                self.logger.debug(f"Error closing WebSocket: {e}")
             finally:
                 self.websocket = None
 
+        # Step 3: Clear state
         self.authenticated = False
+        self.paired_peer = None
+        self.logger.debug("WebSocket state cleared (authenticated=False, paired_peer=None)")
         self.logger.info("Disconnected")
 
     async def send_clipboard(self, content: str, source: ClipboardSyncMode = ClipboardSyncMode.MANUAL) -> None:
@@ -201,13 +258,19 @@ class WebSocketService:
             source: Origin of clipboard ('auto' or 'manual')
         """
         if not self.authenticated:
-            print_error("Not authenticated")
+            self.logger.warning("Attempted to send clipboard while not authenticated")
+            self.logger.error("Not authenticated")
             return
 
         # Validate size before sending
         content_size = len(content.encode("utf-8"))
+        self.logger.debug(
+            f"Preparing to send clipboard: size={content_size} bytes, source={source.value}, "
+            f"preview={content[:50]}..."
+        )
         if content_size > Settings.MAX_MESSAGE_SIZE:
-            print_error(
+            self.logger.warning(f"Clipboard exceeds max size: {content_size} > {Settings.MAX_MESSAGE_SIZE}")
+            self.logger.error(
                 f"Clipboard too large: {content_size / 1024 / 1024:.1f}MB "
                 f"(max: {Settings.MAX_MESSAGE_SIZE / 1024 / 1024:.1f}MB)"
             )
@@ -221,10 +284,14 @@ class WebSocketService:
         )
 
         await self._send_message(message)
+        self.logger.debug(
+            f"Clipboard sent successfully: msg_id={message.message_id}, chars={len(content)}, source={source.value}"
+        )
         self.logger.debug(f"Sent clipboard ({source.value}): {len(content)} chars")
 
     async def _heartbeat_loop(self) -> None:
         """Send periodic heartbeat messages to keep connection alive."""
+        self.logger.debug(f"Heartbeat loop started (interval: {Settings.WS_HEARTBEAT_INTERVAL}s)")
         try:
             while self._running and self.websocket:
                 # Wait first to avoid redundant heartbeat on connection
@@ -238,6 +305,7 @@ class WebSocketService:
             self.logger.debug("Heartbeat loop cancelled")
             raise
         except Exception as e:
+            self.logger.error(f"Heartbeat loop error: {e}", exc_info=True)
             self.logger.error(f"Error in heartbeat loop: {e}")
 
     async def receive_loop(self, mode: ClipboardSyncMode = ClipboardSyncMode.MANUAL) -> None:
@@ -249,13 +317,8 @@ class WebSocketService:
             mode: Sync mode ('auto' or 'manual') for user-friendly messaging
         """
         if not self.authenticated:
-            print_error("Not authenticated, cannot listen")
+            self.logger.error("Not authenticated, cannot listen")
             return
-
-        if mode == ClipboardSyncMode.AUTO:
-            print_info("Monitoring clipboard changes... (Ctrl+C to stop)")
-        else:
-            print_info("Ready to send clipboard (Ctrl+C to stop)")
 
         try:
             self._running = True
@@ -276,31 +339,33 @@ class WebSocketService:
 
             # User-friendly messages based on close code
             if e.code == 1000:
-                print_info("Connection closed normally")
+                self.logger.info("Connection closed normally")
             elif e.code == 1001:
-                print_warning("Server is going away (maintenance?)")
+                self.logger.warning("Server is going away (maintenance?)")
             elif e.code == 1006:
-                print_error("Connection lost unexpectedly (check network)")
+                self.logger.error("Connection lost unexpectedly (check network)")
             elif e.code == 1008:
-                print_error("Server rejected connection (policy violation)")
+                self.logger.error("Server rejected connection (policy violation)")
             else:
                 reason = e.reason or "Unknown reason"
-                print_warning(f"Connection closed by server: {reason} (code: {e.code})")
+                self.logger.warning(f"Connection closed by server: {reason} (code: {e.code})")
 
             self._running = False
         except WebSocketException as e:
             self.logger.error(f"WebSocket error: {e}")
-            print_error(f"Connection lost: {e}")
+            self.logger.error(f"Connection lost: {e}")
             raise
         except Exception as e:
-            self.logger.error(f"Error in receive loop: {e}")
-            print_error(f"Unexpected error: {e}")
-            raise
+            # Don't log if it's an event loop closed error during shutdown
+            if "Event loop is closed" not in str(e):
+                self.logger.error(f"Error in receive loop: {e}")
+                self.logger.error(f"Unexpected error: {e}")
+            self._running = False
         finally:
-            # Cancel heartbeat task
+            # Cancel heartbeat task (ignore errors during shutdown)
             if self._heartbeat_task and not self._heartbeat_task.done():
                 self._heartbeat_task.cancel()
-                with suppress(asyncio.CancelledError):
+                with suppress(asyncio.CancelledError, RuntimeError):
                     await self._heartbeat_task
 
     def register_handler(self, message_type: str, handler: MessageHandler) -> None:
@@ -358,21 +423,21 @@ class WebSocketService:
         # Default handlers using pattern matching
         match message:
             case TextMessage(from_peer=peer, content=content):
-                print_message(peer, content)
+                self.logger.info(f"Message from {peer}: {content}")
 
             case PeerEventMessage(type="peer_connected", peer_id=peer_id):
                 self.paired_peer = peer_id
-                print_success(f"Peer connected: {peer_id}")
+                self.logger.info(f"Peer connected: {peer_id}")
 
             case PeerEventMessage(type="peer_disconnected", peer_id=peer_id):
-                print_warning(f"Peer disconnected: {peer_id}")
+                self.logger.warning(f"Peer disconnected: {peer_id}")
                 self.paired_peer = None
 
             case ErrorMessage(code=code, message=error_message):
-                print_error(f"Server error [{code}]: {error_message}")
+                self.logger.error(f"Server error [{code}]: {error_message}")
 
             case ClipboardTextMessage(from_peer=peer, content=content, source=source):
-                print_message(peer, f"[Clipboard {source.value}] {content[:50]}...")
+                self.logger.info(f"Clipboard from {peer} [{source.value}]: {len(content)} chars")
 
             case _:
                 self.logger.warning(f"Unhandled message type: {message.type}")
