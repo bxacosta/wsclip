@@ -1,21 +1,28 @@
 {
-  "name": "clipboard-sync-relay",
-  "version": "0.0.1",
-  "type": "module",
-  "description": "WebSocket clipboard sync relay using Cloudflare Workers",
-  "main": "src/index.ts",
-  "scripts": {
-    "dev": "wrangler types && wrangler dev",
-    "deploy": "wrangler types && wrangler deploy --minify",
-    "tail": "wrangler tail",
-    "types": "wrangler types"
-  },
-  "packageManager": "pnpm@10.15.0",
-  "dependencies": {
-    "hono": "^4.10.1"
-  },
-  "devDependencies": {
-    "typescript": "^5.9.3",
-    "wrangler": "^4.45.0"
-  }
+    "name": "relay",
+    "module": "src/index.ts",
+    "type": "module",
+    "private": true,
+    "scripts": {
+        "dev": "bun --watch src/index.ts",
+        "start": "bun dist/index.js",
+        "build": "bun build src/index.ts --outdir dist --minify --target bun",
+        "typecheck": "tsc --noEmit",
+        "check": "biome check .",
+        "fix": "biome check --write .",
+        "play": "bun run serve -p 4000 ./playground.html"
+    },
+    "devDependencies": {
+        "@biomejs/biome": "^2.3.8",
+        "@types/bun": "latest",
+        "pino-pretty": "^13.1.3",
+        "serve": "^14.2.5"
+    },
+    "peerDependencies": {
+        "typescript": "^5"
+    },
+    "dependencies": {
+        "pino": "^10.1.0",
+        "zod": "^4.1.13"
+    }
 }

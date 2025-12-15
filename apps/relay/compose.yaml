@@ -1,0 +1,11 @@
+services:
+  server:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - SERVER_SECRET=dev-secret-key-2024
+      - PORT=3000
+      - LOG_LEVEL=info
+      - NODE_ENV=production
+    restart: unless-stopped
