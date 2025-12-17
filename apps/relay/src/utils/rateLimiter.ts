@@ -1,3 +1,4 @@
+import { loadEnv } from "@/config/env";
 import { getLogger } from "@/config/logger";
 
 interface RateLimitEntry {
@@ -106,5 +107,6 @@ class RateLimiter {
     }
 }
 
-// Singleton instance
-export const rateLimiter = new RateLimiter(10, 60000);
+// Singleton instance with configuration from environment
+const env = loadEnv();
+export const rateLimiter = new RateLimiter(env.RATE_LIMIT_MAX, env.RATE_LIMIT_WINDOW_MS);

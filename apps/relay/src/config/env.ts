@@ -7,6 +7,8 @@ const envSchema = z.object({
     LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
     NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
     IDLE_TIMEOUT: z.coerce.number().default(60),
+    RATE_LIMIT_MAX: z.coerce.number().default(10),
+    RATE_LIMIT_WINDOW_MS: z.coerce.number().default(60000),
 });
 
 export type Env = z.infer<typeof envSchema>;
@@ -16,7 +18,9 @@ export function loadEnv(): Env {
 
     if (!result.success) {
         console.error("Invalid environment variables:");
-        console.error(result.error.flatten().fieldErrors);
+        for (const issue of result.error.issues) {
+            console.error(`  - ${issue.path.join(".")}: ${issue.message}`);
+        }
         process.exit(1);
     }
 

@@ -4,7 +4,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - SERVER_SECRET=dev-secret-key-2024
+      - SERVER_SECRET=dev-secret-key-2025
       - PORT=3000
       - LOG_LEVEL=info
       - NODE_ENV=production
