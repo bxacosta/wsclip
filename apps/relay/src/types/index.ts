@@ -6,9 +6,8 @@ export interface HealthResponse {
     timestamp: string;
 }
 
-// WebSocket connection parameters
+// WebSocket connection parameters (from query string, not auth)
 export interface ConnectionParams {
-    secret: string;
     channel: string;
     deviceName: string;
 }
@@ -18,12 +17,20 @@ export interface WebSocketData {
     deviceName: string;
     channelId: string;
     connectedAt: Date;
+    authenticated: boolean;
+    authTimeoutId: ReturnType<typeof setTimeout> | null;
 }
 
 // Base message structure
 export interface BaseMessage {
     type: string;
     timestamp: string;
+}
+
+// Authentication message (client -> server, must be first message)
+export interface AuthMessage extends BaseMessage {
+    type: "auth";
+    secret: string;
 }
 
 // System messages (server -> client)
@@ -56,7 +63,7 @@ export interface ServerShutdownMessage extends BaseMessage {
     message: string;
 }
 
-// PHASE 4: Clipboard message types
+// Clipboard message types
 export type ContentType = "text" | "image" | "file";
 
 export interface ClipboardMetadata {
@@ -69,7 +76,7 @@ export interface ClipboardMessage extends BaseMessage {
     type: "clipboard";
     contentType: ContentType;
     metadata: ClipboardMetadata;
-    data: string; // Plain text for 'text', base64 for 'image'/'file'
+    data: string;
 }
 
 export interface ClipboardAckMessage extends BaseMessage {
@@ -80,7 +87,7 @@ export interface ClipboardAckMessage extends BaseMessage {
 // Channel state
 export interface ChannelDevice {
     deviceName: string;
-    ws: TypedWebSocket; // Use our type-safe alias
+    ws: TypedWebSocket;
     connectedAt: Date;
 }
 
@@ -100,7 +107,9 @@ export type ErrorCode =
     | "INVALID_MESSAGE"
     | "PAYLOAD_TOO_LARGE"
     | "NO_PARTNER"
-    | "RATE_LIMIT_EXCEEDED";
+    | "RATE_LIMIT_EXCEEDED"
+    | "AUTH_TIMEOUT"
+    | "MAX_CHANNELS_REACHED";
 
 // WebSocket close codes (4000-4999 for application-defined codes)
 export const WS_CLOSE_CODES = {
@@ -113,6 +122,23 @@ export const WS_CLOSE_CODES = {
     PAYLOAD_TOO_LARGE: 4007,
     NO_PARTNER: 4008,
     RATE_LIMIT_EXCEEDED: 4009,
+    AUTH_TIMEOUT: 4010,
+    MAX_CHANNELS_REACHED: 4011,
+} as const;
+
+// Centralized error messages
+export const ERROR_MESSAGES: Record<ErrorCode, string> = {
+    INVALID_SECRET: "Invalid secret",
+    INVALID_CHANNEL: "Channel must be exactly 8 alphanumeric characters",
+    INVALID_DEVICE_NAME: "Invalid device name",
+    CHANNEL_FULL: "Channel already has 2 participants",
+    DUPLICATE_DEVICE_NAME: "Device name already exists in this channel",
+    INVALID_MESSAGE: "Invalid message format",
+    PAYLOAD_TOO_LARGE: "Message size exceeds maximum allowed",
+    NO_PARTNER: "No partner connected to receive message",
+    RATE_LIMIT_EXCEEDED: "Too many connection attempts. Please try again later.",
+    AUTH_TIMEOUT: "Authentication timeout. Send auth message within timeout period.",
+    MAX_CHANNELS_REACHED: "Server has reached maximum number of active channels",
 } as const;
 
 // Type alias for typed WebSocket

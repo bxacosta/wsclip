@@ -1,4 +1,4 @@
-import { z } from "zod";
+import {z} from "zod";
 
 const envSchema = z.object({
     SERVER_SECRET: z.string().min(1, "SERVER_SECRET is required"),
@@ -9,6 +9,9 @@ const envSchema = z.object({
     IDLE_TIMEOUT: z.coerce.number().default(60),
     RATE_LIMIT_MAX: z.coerce.number().default(10),
     RATE_LIMIT_WINDOW_MS: z.coerce.number().default(60000),
+    AUTH_TIMEOUT_MS: z.coerce.number().default(5000),
+    MAX_CHANNELS: z.coerce.number().default(4),
+    COMPRESSION_ENABLED: z.coerce.boolean().default(true),
 });
 
 export type Env = z.infer<typeof envSchema>;

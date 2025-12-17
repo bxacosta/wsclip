@@ -1,74 +1,95 @@
 import type { Server, ServerWebSocket } from "bun";
 import type { Env } from "@/config/env";
 import { getLogger } from "@/config/logger";
-import type { ErrorMessage, WebSocketData, WS_CLOSE_CODES } from "@/types";
-import { rateLimiter } from "@/utils/rateLimiter";
+import type { ErrorCode, ErrorMessage, WebSocketData } from "@/types";
+import { ERROR_MESSAGES, type WS_CLOSE_CODES } from "@/types";
+import { getRateLimiter } from "@/utils/rateLimiter";
 import { getConnectionParams, validateConnectionParams } from "@/utils/validation";
 import { channelManager } from "@/websocket/channel";
 import {
+    createTimestamp,
     getMessageType,
     sendConnectedMessage,
     sendErrorAndClose,
     sendMessage,
+    validateAuthMessage,
     validateClipboardAck,
     validateClipboardMessage,
 } from "@/websocket/messages";
+
+/**
+ * Result of WebSocket upgrade attempt
+ */
+export interface UpgradeResult {
+    success: boolean;
+    errorCode?: ErrorCode;
+    errorMessage?: string;
+}
 
 export function createWebSocketHandlers(env: Env) {
     const logger = getLogger();
 
     return {
-        // Upgrade handler (called in fetch)
-        upgrade(req: Request, server: Server<WebSocketData>): boolean {
+        /**
+         * Upgrade handler (called in fetch)
+         * Only validates rate limit and basic params (channel, deviceName)
+         * Secret validation happens via first message auth
+         */
+        upgrade(req: Request, server: Server<WebSocketData>): UpgradeResult {
             const url = new URL(req.url);
-
-            // Get client IP (Bun API)
             const ip = server.requestIP(req)?.address || "unknown";
 
-            // Check rate limit
-            if (!rateLimiter.checkLimit(ip)) {
+            // Check rate limit before accepting connection
+            if (!getRateLimiter().checkLimit(ip)) {
                 logger.warn({ ip }, "Connection rejected due to rate limit");
-                return false;
+                channelManager.incrementError("RATE_LIMIT_EXCEEDED");
+                return {
+                    success: false,
+                    errorCode: "RATE_LIMIT_EXCEEDED",
+                    errorMessage: ERROR_MESSAGES.RATE_LIMIT_EXCEEDED,
+                };
             }
 
-            // Validate connection parameters
-            const validation = validateConnectionParams(url.searchParams, env.SERVER_SECRET);
+            // Validate channel and deviceName (not secret - that comes via first message)
+            const validation = validateConnectionParams(url.searchParams);
 
             if (!validation.valid) {
                 logger.warn({ error: validation.error }, "WebSocket upgrade rejected");
-                return false;
+                if (validation.error?.code) {
+                    channelManager.incrementError(validation.error.code);
+                }
+                return {
+                    success: false,
+                    errorCode: validation.error?.code,
+                    errorMessage: validation.error?.message,
+                };
             }
 
-            // Extract parameters
             const params = getConnectionParams(url.searchParams);
 
-            // Prepare WebSocket data
+            // Prepare WebSocket data - not authenticated yet
             const data: WebSocketData = {
                 deviceName: params.deviceName,
                 channelId: params.channel,
                 connectedAt: new Date(),
+                authenticated: false,
+                authTimeoutId: null,
             };
 
-            // Modern upgrade pattern - return boolean
-            return server.upgrade(req, { data });
+            const upgraded = server.upgrade(req, { data });
+            return { success: upgraded };
         },
 
-        // WebSocket lifecycle handlers
         websocket: {
-            // Apply MAX_MESSAGE_SIZE (fixes Phase 1 issue)
             maxPayloadLength: env.MAX_MESSAGE_SIZE,
-
-            // Enable compression (permessage-deflate)
-            perMessageDeflate: true,
-
-            // Bun sends WebSocket ping frames automatically
-            // If client does not respond with pong, connection closes
+            perMessageDeflate: env.COMPRESSION_ENABLED,
             idleTimeout: env.IDLE_TIMEOUT,
-
-            // Handle backpressure in drain handler
             closeOnBackpressureLimit: false,
 
-            // Connection opened - UPDATED for channel management
+            /**
+             * Connection opened - start auth timeout
+             * Client must send auth message within AUTH_TIMEOUT_MS
+             */
             open(ws: ServerWebSocket<WebSocketData>) {
                 const wsLogger = logger.child({
                     context: "websocket",
@@ -76,67 +97,85 @@ export function createWebSocketHandlers(env: Env) {
                     channelId: ws.data.channelId,
                 });
 
-                wsLogger.info("Device connected");
+                wsLogger.info("Connection opened, waiting for auth message");
 
-                // Try to add device to channel
-                const result = channelManager.addDevice(ws.data.channelId, ws.data.deviceName, ws);
-
-                if (!result.success && result.error) {
-                    // Send error and close
-                    const { code, message } = result.error;
-                    sendErrorAndClose(ws, code as keyof typeof WS_CLOSE_CODES, message);
-                    return;
-                }
-
-                // Check if partner exists
-                const hasPartner = channelManager.hasPartner(ws.data.channelId, ws.data.deviceName);
-
-                // Send connected message
-                sendConnectedMessage(ws, !hasPartner);
+                // Set auth timeout
+                ws.data.authTimeoutId = setTimeout(() => {
+                    if (!ws.data.authenticated) {
+                        wsLogger.warn("Auth timeout - closing connection");
+                        channelManager.incrementError("AUTH_TIMEOUT");
+                        sendErrorAndClose(ws, "AUTH_TIMEOUT", ERROR_MESSAGES.AUTH_TIMEOUT);
+                    }
+                }, env.AUTH_TIMEOUT_MS);
             },
 
-            // Message received - UPDATED for Phase 4 clipboard relay
+            /**
+             * Message received - handle auth or regular messages
+             */
             message(ws: ServerWebSocket<WebSocketData>, message: string | Buffer) {
-                const { deviceName, channelId } = ws.data;
+                const { deviceName, channelId, authenticated } = ws.data;
 
-                // MODERN PATTERN: Child logger with context
                 const wsLogger = logger.child({
                     context: "websocket",
                     deviceName,
                     channelId,
                 });
 
-                // Convert Buffer to string if needed
                 const messageStr = typeof message === "string" ? message : message.toString("utf-8");
+                wsLogger.debug({ size: messageStr.length, authenticated }, "Message received");
 
-                wsLogger.debug({ size: messageStr.length }, "Message received");
-
-                // Determine message type
                 const messageType = getMessageType(messageStr);
 
                 if (!messageType) {
-                    wsLogger.warn("Unknown message type");
-                    sendErrorAndClose(ws, "INVALID_MESSAGE", "Unknown message type");
+                    wsLogger.warn("Message has no type field or invalid JSON");
+                    channelManager.incrementError("INVALID_MESSAGE");
+                    sendErrorAndClose(ws, "INVALID_MESSAGE", "Message must have a valid type field");
                     return;
                 }
 
-                // Handle clipboard message
+                // If not authenticated, only accept auth message
+                if (!authenticated) {
+                    if (messageType !== "auth") {
+                        wsLogger.warn({ type: messageType }, "Received non-auth message before authentication");
+                        channelManager.incrementError("INVALID_SECRET");
+                        sendErrorAndClose(ws, "INVALID_SECRET", "Must authenticate first. Send auth message.");
+                        return;
+                    }
+
+                    handleAuthMessage(ws, messageStr, env.SERVER_SECRET);
+                    return;
+                }
+
+                // Authenticated - handle regular messages
+                if (messageType === "auth") {
+                    // Already authenticated, ignore duplicate auth
+                    wsLogger.debug("Ignoring duplicate auth message");
+                    return;
+                }
+
                 if (messageType === "clipboard") {
                     handleClipboardMessage(ws, messageStr, env.MAX_MESSAGE_SIZE);
                     return;
                 }
 
-                // Handle clipboard ACK
                 if (messageType === "clipboard_ack") {
                     handleClipboardAck(ws, messageStr);
                     return;
                 }
 
-                // Unknown message type
+                // Unsupported message type - send error but keep connection
                 wsLogger.warn({ type: messageType }, "Unsupported message type");
+
+                const errorMsg: ErrorMessage = {
+                    type: "error",
+                    timestamp: createTimestamp(),
+                    code: "INVALID_MESSAGE",
+                    message: `Unsupported message type: ${messageType}`,
+                };
+
+                sendMessage(ws, errorMsg);
             },
 
-            // Backpressure relieved (modern pattern)
             drain(ws: ServerWebSocket<WebSocketData>) {
                 const wsLogger = logger.child({
                     context: "websocket",
@@ -145,13 +184,18 @@ export function createWebSocketHandlers(env: Env) {
                 });
 
                 wsLogger.debug("Backpressure relieved, ready to send");
-
-                // Phase 3 will implement queued message sending
             },
 
-            // Connection closed - UPDATED for channel cleanup
+            /**
+             * Connection closed - cleanup auth timeout and channel
+             */
             close(ws: ServerWebSocket<WebSocketData>, code: number, reason: string) {
-                const { deviceName, channelId, connectedAt } = ws.data;
+                const { deviceName, channelId, connectedAt, authenticated, authTimeoutId } = ws.data;
+
+                // Clear auth timeout if pending
+                if (authTimeoutId) {
+                    clearTimeout(authTimeoutId);
+                }
 
                 const wsLogger = logger.child({
                     context: "websocket",
@@ -159,7 +203,6 @@ export function createWebSocketHandlers(env: Env) {
                     channelId,
                 });
 
-                // Calculate connection duration
                 const duration = Date.now() - connectedAt.getTime();
                 const durationSec = Math.floor(duration / 1000);
 
@@ -168,15 +211,17 @@ export function createWebSocketHandlers(env: Env) {
                         code,
                         reason: reason || "No reason provided",
                         durationSec,
+                        wasAuthenticated: authenticated,
                     },
-                    "Device disconnected",
+                    "Connection closed",
                 );
 
-                // Remove device from channel (auto-unsubscribes and notifies partner)
-                channelManager.removeDevice(channelId, deviceName);
+                // Only remove from channel if was authenticated (added to channel)
+                if (authenticated) {
+                    channelManager.removeDevice(channelId, deviceName);
+                }
             },
 
-            // Error handler
             error(ws: ServerWebSocket<WebSocketData>, error: Error) {
                 const wsLogger = logger.child({
                     context: "websocket",
@@ -189,34 +234,86 @@ export function createWebSocketHandlers(env: Env) {
         },
     };
 
-    // ============================================================================
-    // Helper Functions for Phase 4
-    // ============================================================================
+    /**
+     * Handle authentication message
+     */
+    function handleAuthMessage(ws: ServerWebSocket<WebSocketData>, messageStr: string, serverSecret: string): void {
+        const { deviceName, channelId, authTimeoutId } = ws.data;
+
+        const wsLogger = logger.child({
+            context: "auth",
+            deviceName,
+            channelId,
+        });
+
+        // Validate auth message
+        const validation = validateAuthMessage(messageStr);
+
+        if (!validation.valid || !validation.data) {
+            wsLogger.warn({ error: validation.error }, "Invalid auth message");
+            channelManager.incrementError("INVALID_MESSAGE");
+            sendErrorAndClose(ws, "INVALID_MESSAGE", validation.error?.message || "Invalid auth message format");
+            return;
+        }
+
+        // Verify secret
+        if (validation.data.secret !== serverSecret) {
+            wsLogger.warn("Invalid secret provided");
+            channelManager.incrementError("INVALID_SECRET");
+            sendErrorAndClose(ws, "INVALID_SECRET", ERROR_MESSAGES.INVALID_SECRET);
+            return;
+        }
+
+        // Clear auth timeout
+        if (authTimeoutId) {
+            clearTimeout(authTimeoutId);
+            ws.data.authTimeoutId = null;
+        }
+
+        // Mark as authenticated
+        ws.data.authenticated = true;
+
+        wsLogger.info("Authentication successful");
+
+        // Now try to add to channel
+        const result = channelManager.addDevice(channelId, deviceName, ws, env.MAX_CHANNELS);
+
+        if (!result.success && result.error) {
+            wsLogger.warn({ error: result.error }, "Failed to join channel");
+            sendErrorAndClose(ws, result.error.code as keyof typeof WS_CLOSE_CODES, result.error.message);
+            return;
+        }
+
+        // Check if partner exists
+        const hasPartner = channelManager.hasPartner(channelId, deviceName);
+
+        // Send connected message
+        sendConnectedMessage(ws, !hasPartner);
+
+        wsLogger.info({ hasPartner }, "Device joined channel successfully");
+    }
 
     /**
      * Handle clipboard message
-     * MODERN PATTERN: Uses child logger and reuses message utilities
      */
     function handleClipboardMessage(ws: ServerWebSocket<WebSocketData>, messageStr: string, maxSize: number): void {
         const { deviceName, channelId } = ws.data;
-        const logger = getLogger();
 
-        // Child logger for context
         const wsLogger = logger.child({
             context: "clipboard",
             deviceName,
             channelId,
         });
 
-        // Validate message
         const validation = validateClipboardMessage(messageStr, maxSize);
 
         if (!validation.valid && validation.error) {
             wsLogger.warn({ error: validation.error }, "Invalid clipboard message");
+            channelManager.incrementError(validation.error.code);
 
             const errorMsg: ErrorMessage = {
                 type: "error",
-                timestamp: new Date().toISOString(),
+                timestamp: createTimestamp(),
                 code: validation.error.code,
                 message: validation.error.message,
             };
@@ -237,17 +334,17 @@ export function createWebSocketHandlers(env: Env) {
                 "Clipboard message validated",
             );
 
-            // Relay to partner
             const relayed = channelManager.relayToPartner(channelId, deviceName, messageStr);
 
             if (!relayed) {
                 wsLogger.warn("No partner available to receive message");
+                channelManager.incrementError("NO_PARTNER");
 
                 const errorMsg: ErrorMessage = {
                     type: "error",
-                    timestamp: new Date().toISOString(),
+                    timestamp: createTimestamp(),
                     code: "NO_PARTNER",
-                    message: "No partner connected to receive message",
+                    message: ERROR_MESSAGES.NO_PARTNER,
                 };
 
                 sendMessage(ws, errorMsg);
@@ -266,11 +363,9 @@ export function createWebSocketHandlers(env: Env) {
 
     /**
      * Handle clipboard ACK
-     * MODERN PATTERN: Uses child logger
      */
     function handleClipboardAck(ws: ServerWebSocket<WebSocketData>, messageStr: string): void {
         const { deviceName, channelId } = ws.data;
-        const logger = getLogger();
 
         const wsLogger = logger.child({
             context: "clipboard_ack",
@@ -278,20 +373,17 @@ export function createWebSocketHandlers(env: Env) {
             channelId,
         });
 
-        // Validate ACK
         const validation = validateClipboardAck(messageStr);
 
         if (!validation.valid) {
             wsLogger.warn({ error: validation.error }, "Invalid ACK message");
-            return; // Just ignore invalid ACKs
+            return;
         }
 
         const ackMsg = validation.data;
 
         if (ackMsg) {
             wsLogger.debug({ receivedSize: ackMsg.receivedSize }, "ACK received");
-
-            // Relay ACK to partner (the original sender)
             channelManager.relayToPartner(channelId, deviceName, messageStr);
         }
     }

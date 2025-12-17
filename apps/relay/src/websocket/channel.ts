@@ -1,5 +1,6 @@
 import { getLogger } from "@/config/logger";
 import type { Channel, ChannelDevice, ErrorCode, TypedWebSocket } from "@/types";
+import { ERROR_MESSAGES } from "@/types";
 import { sendPartnerConnected, sendPartnerDisconnected } from "./messages";
 
 class ChannelManager {
@@ -7,14 +8,56 @@ class ChannelManager {
     private messagesRelayed = 0;
     private bytesTransferred = 0;
 
+    // Error metrics
+    private errors: Record<ErrorCode, number> = {
+        INVALID_SECRET: 0,
+        INVALID_CHANNEL: 0,
+        INVALID_DEVICE_NAME: 0,
+        CHANNEL_FULL: 0,
+        DUPLICATE_DEVICE_NAME: 0,
+        INVALID_MESSAGE: 0,
+        PAYLOAD_TOO_LARGE: 0,
+        NO_PARTNER: 0,
+        RATE_LIMIT_EXCEEDED: 0,
+        AUTH_TIMEOUT: 0,
+        MAX_CHANNELS_REACHED: 0,
+    };
+
     /**
-     * Get or create a channel
+     * Increment error counter for a specific error code
      */
-    private getOrCreateChannel(channelId: string): Channel {
-        const logger = getLogger(); // Modern pattern: get logger inside function
+    incrementError(code: ErrorCode): void {
+        this.errors[code]++;
+    }
+
+    /**
+     * Get error metrics
+     */
+    getErrorMetrics(): Record<ErrorCode, number> {
+        return { ...this.errors };
+    }
+
+    /**
+     * Get or create a channel (internal use only)
+     * Does NOT check max channels - that is done in addDevice
+     */
+    private getOrCreateChannel(channelId: string, maxChannels: number): Channel | null {
+        const logger = getLogger();
         let channel = this.channels.get(channelId);
 
         if (!channel) {
+            // Check max channels limit before creating new channel
+            if (this.channels.size >= maxChannels) {
+                logger.warn(
+                    {
+                        currentChannels: this.channels.size,
+                        maxChannels,
+                    },
+                    "Max channels limit reached",
+                );
+                return null;
+            }
+
             channel = {
                 channelId,
                 devices: new Map(),
@@ -23,7 +66,7 @@ class ChannelManager {
 
             this.channels.set(channelId, channel);
 
-            logger.info({ channelId }, "Channel created");
+            logger.info({ channelId, totalChannels: this.channels.size }, "Channel created");
         }
 
         return channel;
@@ -31,15 +74,29 @@ class ChannelManager {
 
     /**
      * Add device to channel
-     * Returns error if channel is full or deviceName is duplicate
+     * Returns error if channel is full, deviceName is duplicate, or max channels reached
      */
     addDevice(
         channelId: string,
         deviceName: string,
         ws: TypedWebSocket,
+        maxChannels: number,
     ): { success: boolean; error?: { code: ErrorCode; message: string } } {
         const logger = getLogger();
-        const channel = this.getOrCreateChannel(channelId);
+        const channel = this.getOrCreateChannel(channelId, maxChannels);
+
+        // Check if max channels limit was reached
+        if (!channel) {
+            this.incrementError("MAX_CHANNELS_REACHED");
+
+            return {
+                success: false,
+                error: {
+                    code: "MAX_CHANNELS_REACHED",
+                    message: ERROR_MESSAGES.MAX_CHANNELS_REACHED,
+                },
+            };
+        }
 
         // Check if channel is full (max 2 devices)
         if (channel.devices.size >= 2) {
@@ -52,11 +109,13 @@ class ChannelManager {
                 "Channel full attempt",
             );
 
+            this.incrementError("CHANNEL_FULL");
+
             return {
                 success: false,
                 error: {
                     code: "CHANNEL_FULL",
-                    message: "Channel already has 2 participants",
+                    message: ERROR_MESSAGES.CHANNEL_FULL,
                 },
             };
         }
@@ -71,11 +130,13 @@ class ChannelManager {
                 "Duplicate device name attempt",
             );
 
+            this.incrementError("DUPLICATE_DEVICE_NAME");
+
             return {
                 success: false,
                 error: {
                     code: "DUPLICATE_DEVICE_NAME",
-                    message: "Device name already exists in this channel",
+                    message: ERROR_MESSAGES.DUPLICATE_DEVICE_NAME,
                 },
             };
         }
@@ -89,7 +150,7 @@ class ChannelManager {
 
         channel.devices.set(deviceName, device);
 
-        // MODERN PATTERN: Subscribe to channel topic for pub/sub
+        // Subscribe to channel topic for pub/sub
         ws.subscribe(channelId);
 
         logger.info(
@@ -124,7 +185,7 @@ class ChannelManager {
         // Get the WebSocket before removing
         const device = channel.devices.get(deviceName);
         if (device) {
-            // MODERN PATTERN: Unsubscribe from channel topic
+            // Unsubscribe from channel topic
             device.ws.unsubscribe(channelId);
         }
 
@@ -181,7 +242,6 @@ class ChannelManager {
 
     /**
      * Notify devices that partner connected
-     * MODERN PATTERN: Uses sendPartnerConnected utility
      */
     private notifyPartnerConnected(channelId: string, newDeviceName: string): void {
         const logger = getLogger();
@@ -229,7 +289,6 @@ class ChannelManager {
 
     /**
      * Notify remaining device that partner disconnected
-     * MODERN PATTERN: Uses sendPartnerDisconnected utility
      */
     private notifyPartnerDisconnected(channelId: string, disconnectedDeviceName: string): void {
         const logger = getLogger();
@@ -259,10 +318,9 @@ class ChannelManager {
     /**
      * Relay message to partner
      * Returns false if no partner exists
-     * MODERN PATTERN: Uses lazy logger initialization
      */
     relayToPartner(channelId: string, senderName: string, message: string): boolean {
-        const logger = getLogger(); // Modern pattern: get logger inside function
+        const logger = getLogger();
         const partner = this.getPartner(channelId, senderName);
 
         if (!partner) {
@@ -327,25 +385,9 @@ class ChannelManager {
     }
 
     /**
-     * Get channel statistics
-     */
-    getStats() {
-        let totalDevices = 0;
-
-        for (const channel of this.channels.values()) {
-            totalDevices += channel.devices.size;
-        }
-
-        return {
-            activeChannels: this.channels.size,
-            activeConnections: totalDevices,
-        };
-    }
-
-    /**
      * Get detailed channel statistics with connection age tracking
      */
-    getDetailedStats() {
+    getStats() {
         let totalDevices = 0;
         let oldestConnection: Date | null = null;
         let newestConnection: Date | null = null;
@@ -371,6 +413,7 @@ class ChannelManager {
             bytesTransferred: this.bytesTransferred,
             oldestConnectionAge: oldestConnection ? Math.floor((Date.now() - oldestConnection.getTime()) / 1000) : 0,
             newestConnectionAge: newestConnection ? Math.floor((Date.now() - newestConnection.getTime()) / 1000) : 0,
+            errors: this.getErrorMetrics(),
         };
     }
 }

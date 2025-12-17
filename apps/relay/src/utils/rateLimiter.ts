@@ -1,4 +1,3 @@
-import { loadEnv } from "@/config/env";
 import { getLogger } from "@/config/logger";
 
 interface RateLimitEntry {
@@ -6,17 +5,20 @@ interface RateLimitEntry {
     resetAt: number;
 }
 
+export interface RateLimiterConfig {
+    maxConnections: number;
+    windowMs: number;
+}
+
 class RateLimiter {
     private limits: Map<string, RateLimitEntry> = new Map();
     private readonly maxConnections: number;
     private readonly windowMs: number;
-    private cleanupInterval: NodeJS.Timeout | null = null;
+    private cleanupInterval: ReturnType<typeof setInterval> | null = null;
 
-    constructor(maxConnections = 10, windowMs = 60000) {
-        this.maxConnections = maxConnections;
-        this.windowMs = windowMs;
-
-        // Start cleanup interval (every minute)
+    constructor(config: RateLimiterConfig) {
+        this.maxConnections = config.maxConnections;
+        this.windowMs = config.windowMs;
         this.startCleanup();
     }
 
@@ -28,7 +30,6 @@ class RateLimiter {
         const now = Date.now();
         const entry = this.limits.get(ip);
 
-        // No entry or expired, create new
         if (!entry || now >= entry.resetAt) {
             this.limits.set(ip, {
                 count: 1,
@@ -37,10 +38,8 @@ class RateLimiter {
             return true;
         }
 
-        // Increment count
         entry.count++;
 
-        // Check if exceeded
         if (entry.count > this.maxConnections) {
             const logger = getLogger();
             logger.warn(
@@ -57,9 +56,6 @@ class RateLimiter {
         return true;
     }
 
-    /**
-     * Start cleanup interval to remove expired entries
-     */
     private startCleanup(): void {
         this.cleanupInterval = setInterval(() => {
             const now = Date.now();
@@ -82,12 +78,9 @@ class RateLimiter {
                     "Rate limiter cleanup completed",
                 );
             }
-        }, 60000); // Every minute
+        }, 60000);
     }
 
-    /**
-     * Stop cleanup interval
-     */
     stop(): void {
         if (this.cleanupInterval) {
             clearInterval(this.cleanupInterval);
@@ -95,9 +88,6 @@ class RateLimiter {
         }
     }
 
-    /**
-     * Get current statistics
-     */
     getStats() {
         return {
             trackedIPs: this.limits.size,
@@ -107,6 +97,17 @@ class RateLimiter {
     }
 }
 
-// Singleton instance with configuration from environment
-const env = loadEnv();
-export const rateLimiter = new RateLimiter(env.RATE_LIMIT_MAX, env.RATE_LIMIT_WINDOW_MS);
+let rateLimiterInstance: RateLimiter | null = null;
+
+export function initRateLimiter(config: RateLimiterConfig): void {
+    if (!rateLimiterInstance) {
+        rateLimiterInstance = new RateLimiter(config);
+    }
+}
+
+export function getRateLimiter(): RateLimiter {
+    if (!rateLimiterInstance) {
+        throw new Error("RateLimiter not initialized. Call initRateLimiter(config) first.");
+    }
+    return rateLimiterInstance;
+}

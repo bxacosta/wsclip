@@ -1,12 +1,18 @@
 import { loadEnv } from "@/config/env";
 import { flushLogger, getLogger, initLogger } from "@/config/logger";
 import { startServer } from "@/server";
-import { rateLimiter } from "@/utils/rateLimiter";
+import { getRateLimiter, initRateLimiter } from "@/utils/rateLimiter";
 import { channelManager } from "@/websocket/channel";
 
 // Initialize environment and logger first
 const env = loadEnv();
 initLogger(env);
+
+// Initialize rate limiter with environment configuration
+initRateLimiter({
+    maxConnections: env.RATE_LIMIT_MAX,
+    windowMs: env.RATE_LIMIT_WINDOW_MS,
+});
 
 const logger = getLogger();
 const server = startServer(env);
@@ -31,7 +37,7 @@ const shutdown = async (signal: string) => {
     await new Promise(resolve => setTimeout(resolve, 5000));
 
     // Stop rate limiter cleanup
-    rateLimiter.stop();
+    getRateLimiter().stop();
 
     // Stop server
     logger.info("Stopping server");

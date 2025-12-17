@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Relay Tester - Phase 6</title>
+    <title>WSClip Relay Tester</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -27,7 +27,7 @@
                 RELAY<span class="text-neutral-400">TESTER</span>
             </h1>
         </div>
-        <div class="text-xs text-neutral-400 uppercase tracking-wider">Phase 6: Security & Monitoring</div>
+        <div class="text-xs text-neutral-400 uppercase tracking-wider">WebSocket Relay Test Client</div>
     </header>
 
     <!-- MAIN WORKSPACE -->
@@ -331,7 +331,8 @@
                 return;
             }
 
-            const url = `${serverUrl}/ws?secret=${encodeURIComponent(secret)}&channel=${encodeURIComponent(channel)}&deviceName=${encodeURIComponent(deviceName)}`;
+            // Build URL with channel and deviceName (auth via first message)
+            const url = `${serverUrl}/ws?channel=${encodeURIComponent(channel)}&deviceName=${encodeURIComponent(deviceName)}`;
 
             log('SYS', `Connecting to ${serverUrl}...`);
             log('INFO', `Channel: ${channel} | Device: ${deviceName}`);
@@ -341,10 +342,19 @@
 
                 ws.onopen = () => {
                     log('OK', 'WebSocket connection established');
-                    connectionState.connected = true;
+                    log('SYS', 'Sending auth message...');
+
+                    // Send auth message as first message
+                    const authMessage = {
+                        type: 'auth',
+                        secret: secret
+                    };
+                    ws.send(JSON.stringify(authMessage));
+                    log('TX', 'Auth message sent');
+
+                    // Update UI to show connection in progress
                     connectionState.channel = channel;
                     connectionState.device = deviceName;
-                    updateConnectionUI(true);
 
                     elements.statusChannel.textContent = channel;
                     elements.statusChannel.classList.remove('text-neutral-500');
@@ -353,6 +363,10 @@
                     elements.statusDevice.textContent = deviceName;
                     elements.statusDevice.classList.remove('text-neutral-500');
                     elements.statusDevice.classList.add('text-white');
+
+                    elements.statusConnection.textContent = 'Authenticating...';
+                    elements.statusConnection.classList.remove('text-neutral-500', 'text-emerald-500');
+                    elements.statusConnection.classList.add('text-amber-500');
                 };
 
                 ws.onmessage = (event) => {
@@ -370,7 +384,14 @@
 
                 ws.onclose = (event) => {
                     const reason = event.reason || 'No reason provided';
-                    log('WARN', `Connection closed [${event.code}]: ${reason}`);
+                    
+                    // Check if we were still authenticating (never received 'connected')
+                    if (!connectionState.connected && connectionState.channel) {
+                        log('ERR', `Authentication failed [${event.code}]: ${reason}`);
+                    } else {
+                        log('WARN', `Connection closed [${event.code}]: ${reason}`);
+                    }
+                    
                     updateConnectionUI(false);
                     ws = null;
                 };
@@ -391,8 +412,10 @@
         function handleMessage(data) {
             switch (data.type) {
                 case 'connected':
-                    log('OK', `Connected to channel: ${data.channelId}`, data);
+                    log('OK', `Authenticated and connected to channel: ${data.channelId}`, data);
+                    connectionState.connected = true;
                     connectionState.waitingForPartner = data.waitingForPartner;
+                    updateConnectionUI(true);
                     if (data.waitingForPartner) {
                         log('INFO', 'Waiting for partner to join...');
                         updatePartnerUI(null);
@@ -517,8 +540,8 @@
         });
 
         // ==================== Initialize ====================
-        log('SYS', 'Relay Tester initialized - Phase 6');
-        log('INFO', 'Ready to connect');
+        log('SYS', 'WSClip Relay Tester initialized');
+        log('INFO', 'Ready to connect (First Message Auth)');
     </script>
 </body>
 </html>

@@ -1,7 +1,26 @@
 import type { Env } from "@/config/env";
 import { getLogger } from "@/config/logger";
 import { handleHealthCheck, handleNotFound, handleStats } from "@/http/routes";
+import { WS_CLOSE_CODES } from "@/types";
 import { createWebSocketHandlers } from "@/websocket/handler";
+
+/**
+ * Map error codes to HTTP status codes
+ */
+function getHttpStatusForError(errorCode: string | undefined): number {
+    switch (errorCode) {
+        case "RATE_LIMIT_EXCEEDED":
+            return 429; // Too Many Requests
+        case "INVALID_SECRET":
+            return 401; // Unauthorized
+        case "INVALID_CHANNEL":
+        case "INVALID_DEVICE_NAME":
+        case "INVALID_MESSAGE":
+            return 400; // Bad Request
+        default:
+            return 400;
+    }
+}
 
 export function startServer(env: Env) {
     const logger = getLogger();
@@ -15,10 +34,24 @@ export function startServer(env: Env) {
 
             // WebSocket upgrade
             if (url.pathname === "/ws") {
-                if (wsHandlers.upgrade(req, server)) {
+                const result = wsHandlers.upgrade(req, server);
+
+                if (result.success) {
                     return; // undefined = success (modern pattern)
                 }
-                return new Response("WebSocket upgrade failed", { status: 400 });
+
+                // Return detailed error response with appropriate status code and WS close code
+                const httpStatus = getHttpStatusForError(result.errorCode);
+                const wsCloseCode = result.errorCode ? WS_CLOSE_CODES[result.errorCode] : 4000;
+
+                return Response.json(
+                    {
+                        error: result.errorCode || "UPGRADE_FAILED",
+                        message: result.errorMessage || "WebSocket upgrade failed",
+                        wsCloseCode,
+                    },
+                    { status: httpStatus },
+                );
             }
 
             // Health check endpoint
@@ -26,9 +59,10 @@ export function startServer(env: Env) {
                 return handleHealthCheck();
             }
 
-            // Stats endpoint
+            // Stats endpoint (requires authentication)
             if (url.pathname === "/stats" && req.method === "GET") {
-                return handleStats();
+                const authHeader = req.headers.get("Authorization");
+                return handleStats(authHeader, env.SERVER_SECRET);
             }
 
             // Not found

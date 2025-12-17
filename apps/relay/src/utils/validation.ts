@@ -9,9 +9,29 @@ export interface ValidationResult {
     };
 }
 
-// Connection parameter schema
+/**
+ * Extract Bearer token from Authorization header
+ * Expected format: "Bearer <token>"
+ * Used for HTTP endpoint authentication (e.g., /stats)
+ */
+export function extractBearerToken(authHeader: string | null): string | null {
+    if (!authHeader) {
+        return null;
+    }
+
+    const parts = authHeader.split(" ");
+    if (parts.length !== 2 || parts[0] !== "Bearer") {
+        return null;
+    }
+
+    return parts[1] || null;
+}
+
+// Maximum length for device name (security limit)
+const MAX_DEVICE_NAME_LENGTH = 64;
+
+// Connection parameter schema (channel and deviceName only, auth via first message)
 const connectionParamsSchema = z.object({
-    secret: z.string().min(1),
     channel: z
         .string()
         .length(8, "Channel must be exactly 8 characters")
@@ -19,18 +39,20 @@ const connectionParamsSchema = z.object({
     deviceName: z
         .string()
         .min(1, "Device name is required")
+        .max(MAX_DEVICE_NAME_LENGTH, `Device name must be at most ${MAX_DEVICE_NAME_LENGTH} characters`)
         .transform(val => val.trim())
         .refine(val => val.length > 0, "Device name cannot be empty"),
 });
 
-export function validateConnectionParams(params: URLSearchParams, serverSecret: string): ValidationResult {
-    const secret = params.get("secret");
+/**
+ * Validate connection parameters from URL query string
+ * Only validates channel and deviceName - authentication happens via first message
+ */
+export function validateConnectionParams(params: URLSearchParams): ValidationResult {
     const channel = params.get("channel");
     const deviceName = params.get("deviceName");
 
-    // Parse with Zod
     const parseResult = connectionParamsSchema.safeParse({
-        secret,
         channel,
         deviceName,
     });
@@ -54,23 +76,14 @@ export function validateConnectionParams(params: URLSearchParams, serverSecret: 
         };
     }
 
-    // Check secret match
-    if (parseResult.data.secret !== serverSecret) {
-        return {
-            valid: false,
-            error: {
-                code: "INVALID_SECRET",
-                message: "Invalid or missing secret",
-            },
-        };
-    }
-
     return { valid: true };
 }
 
+/**
+ * Get connection parameters from URL query string
+ */
 export function getConnectionParams(params: URLSearchParams) {
     return {
-        secret: params.get("secret") || "",
         channel: params.get("channel") || "",
         deviceName: params.get("deviceName")?.trim() || "",
     };

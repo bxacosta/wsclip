@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { getLogger } from "@/config/logger";
 import type {
+    AuthMessage,
     BaseMessage,
     ClipboardAckMessage,
     ClipboardMessage,
@@ -91,13 +92,14 @@ export function sendPartnerDisconnected(ws: TypedWebSocket, partnerName: string)
     sendMessage(ws, msg);
 }
 
-// ============================================================================
-// PHASE 4: Clipboard Message Validation
-// ============================================================================
+// MIME type regex: type/subtype with optional parameters
+// Examples: text/plain, image/png, application/octet-stream, text/plain; charset=utf-8
+const MIME_TYPE_REGEX =
+    /^[a-zA-Z0-9][a-zA-Z0-9!#$&\-^_.+]*\/[a-zA-Z0-9][a-zA-Z0-9!#$&\-^_.+]*(;\s*[a-zA-Z0-9\-_.]+=[a-zA-Z0-9\-_.]+)*$/;
 
 // Zod schemas for runtime validation
 const clipboardMetadataSchema = z.object({
-    mimeType: z.string().min(1),
+    mimeType: z.string().min(1).regex(MIME_TYPE_REGEX, "Invalid MIME type format"),
     size: z.number().int().positive(),
     filename: z.string().nullable(),
 });
@@ -127,10 +129,29 @@ export interface ValidationResult<T = unknown> {
 
 /**
  * Validate and parse clipboard message
- * MODERN PATTERN: Uses lazy logger initialization
  */
 export function validateClipboardMessage(rawMessage: string, maxSize: number): ValidationResult<ClipboardMessage> {
-    const logger = getLogger(); // Modern pattern: get logger inside function
+    const logger = getLogger();
+
+    // Validate total message size first (raw JSON string)
+    const messageSize = Buffer.byteLength(rawMessage, "utf-8");
+    if (messageSize > maxSize) {
+        logger.warn(
+            {
+                size: messageSize,
+                maxSize,
+            },
+            "Message size exceeds maximum",
+        );
+
+        return {
+            valid: false,
+            error: {
+                code: "PAYLOAD_TOO_LARGE",
+                message: `Message size ${messageSize} exceeds maximum ${maxSize} bytes`,
+            },
+        };
+    }
 
     // Parse JSON
     let parsed: unknown;
@@ -163,29 +184,8 @@ export function validateClipboardMessage(rawMessage: string, maxSize: number): V
         };
     }
 
-    const message = result.data as ClipboardMessage;
-
-    // Validate size
-    const dataSize = Buffer.from(message.data, "utf-8").length;
-
-    if (dataSize > maxSize) {
-        logger.warn(
-            {
-                size: dataSize,
-                maxSize,
-                contentType: message.contentType,
-            },
-            "Payload too large",
-        );
-
-        return {
-            valid: false,
-            error: {
-                code: "PAYLOAD_TOO_LARGE",
-                message: `Message size ${dataSize} exceeds maximum ${maxSize} bytes`,
-            },
-        };
-    }
+    // Use Zod's inferred data - assertion needed for interface compatibility
+    const message = result.data;
 
     // Validate base64 for image/file
     if (message.contentType !== "text") {
@@ -204,13 +204,12 @@ export function validateClipboardMessage(rawMessage: string, maxSize: number): V
 
     return {
         valid: true,
-        data: message,
+        data: message as ClipboardMessage,
     };
 }
 
 /**
  * Validate clipboard ACK message
- * MODERN PATTERN: Uses lazy logger initialization
  */
 export function validateClipboardAck(rawMessage: string): ValidationResult<ClipboardAckMessage> {
     const logger = getLogger();
@@ -249,22 +248,21 @@ export function validateClipboardAck(rawMessage: string): ValidationResult<Clipb
 }
 
 /**
- * Check if string is valid base64
+ * Check if string is valid base64 using regex (efficient, no decode/encode cycle)
+ * Validates: A-Z, a-z, 0-9, +, /, and = for padding
+ * Length must be multiple of 4
  */
+const BASE64_REGEX = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
+
 function isValidBase64(str: string): boolean {
-    try {
-        // Use Bun's native base64 functions
-        const decoded = atob(str);
-        const encoded = btoa(decoded);
-        return encoded === str;
-    } catch {
+    if (str.length === 0) {
         return false;
     }
+    return BASE64_REGEX.test(str);
 }
 
 /**
  * Create clipboard ACK message
- * MODERN PATTERN: Reuses createTimestamp() from Phase 2
  */
 export function createClipboardAck(size: number): ClipboardAckMessage {
     return {
@@ -276,7 +274,6 @@ export function createClipboardAck(size: number): ClipboardAckMessage {
 
 /**
  * Send clipboard ACK to partner
- * MODERN PATTERN: Reuses sendMessage() for backpressure handling
  */
 export function sendClipboardAck(ws: TypedWebSocket, size: number): void {
     const ackMsg = createClipboardAck(size);
@@ -293,4 +290,52 @@ export function getMessageType(rawMessage: string): string | null {
     } catch {
         return null;
     }
+}
+
+// Auth message schema
+const authMessageSchema = z.object({
+    type: z.literal("auth"),
+    secret: z.string().min(1, "Secret is required"),
+});
+
+/**
+ * Validate auth message from client
+ * Expected format: { type: "auth", secret: "xxx" }
+ */
+export function validateAuthMessage(rawMessage: string): ValidationResult<AuthMessage> {
+    const logger = getLogger();
+
+    let parsed: unknown;
+    try {
+        parsed = JSON.parse(rawMessage);
+    } catch (error) {
+        logger.warn({ err: error }, "Invalid JSON in auth message");
+
+        return {
+            valid: false,
+            error: {
+                code: "INVALID_MESSAGE",
+                message: "Invalid JSON format",
+            },
+        };
+    }
+
+    const result = authMessageSchema.safeParse(parsed);
+
+    if (!result.success) {
+        logger.warn({ errors: result.error.issues }, "Invalid auth message schema");
+
+        return {
+            valid: false,
+            error: {
+                code: "INVALID_MESSAGE",
+                message: "Invalid auth message format. Expected: { type: 'auth', secret: 'xxx' }",
+            },
+        };
+    }
+
+    return {
+        valid: true,
+        data: result.data as AuthMessage,
+    };
 }

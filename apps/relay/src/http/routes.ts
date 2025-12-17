@@ -1,6 +1,7 @@
 import { getLogger } from "@/config/logger";
 import type { HealthResponse } from "@/types";
-import { rateLimiter } from "@/utils/rateLimiter";
+import { getRateLimiter } from "@/utils/rateLimiter";
+import { extractBearerToken } from "@/utils/validation";
 import { channelManager } from "@/websocket/channel";
 
 export function handleHealthCheck(): Response {
@@ -16,11 +17,22 @@ export function handleHealthCheck(): Response {
     return Response.json(response);
 }
 
-// NEW: Stats endpoint with detailed metrics
-export function handleStats(): Response {
+/**
+ * Stats endpoint with authentication
+ * Requires Authorization: Bearer <secret> header
+ */
+export function handleStats(authHeader: string | null, serverSecret: string): Response {
     const logger = getLogger();
-    const stats = channelManager.getDetailedStats();
-    const rateLimitStats = rateLimiter.getStats();
+
+    // Validate authorization
+    const token = extractBearerToken(authHeader);
+    if (!token || token !== serverSecret) {
+        logger.warn("Stats request rejected: invalid or missing authorization");
+        return new Response("Unauthorized", { status: 401 });
+    }
+
+    const stats = channelManager.getStats();
+    const rateLimitStats = getRateLimiter().getStats();
 
     // Use process.memoryUsage() for memory metrics (Bun compatible)
     const memUsage = process.memoryUsage();
