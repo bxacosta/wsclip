@@ -70,20 +70,7 @@ export function validateControlPayload(data: unknown): ValidationResult<ControlM
     };
 }
 
-export function validateDataPayload(data: unknown, maxSize: number): ValidationResult<DataMessage> {
-    const jsonString = JSON.stringify(data);
-    const sizeInBytes = new TextEncoder().encode(jsonString).length;
-
-    if (sizeInBytes > maxSize) {
-        return {
-            valid: false,
-            error: {
-                code: "MESSAGE_TOO_LARGE",
-                message: `Message size ${sizeInBytes} exceeds maximum ${maxSize} bytes`,
-            },
-        };
-    }
-
+export function validateDataPayload(data: unknown): ValidationResult<DataMessage> {
     const result = dataMessageSchema.safeParse(data);
 
     if (!result.success) {

@@ -6,12 +6,10 @@ const envSchema = z.object({
     MAX_MESSAGE_SIZE: z.coerce.number().default(104857600),
     LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
     NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
-    IDLE_TIMEOUT: z.coerce.number().default(60),
-    RATE_LIMIT_MAX: z.coerce.number().default(10),
+    IDLE_TIMEOUT: z.coerce.number().default(120),
+    RATE_LIMIT_MAX: z.coerce.number().default(100),
     RATE_LIMIT_WINDOW_MS: z.coerce.number().default(60000),
-    AUTH_TIMEOUT_MS: z.coerce.number().default(5000),
-    MAX_CHANNELS: z.coerce.number().default(4),
-    COMPRESSION_ENABLED: z.coerce.boolean().default(true),
+    COMPRESSION_ENABLED: z.coerce.boolean().default(false),
 });
 
 export type Env = z.infer<typeof envSchema>;

@@ -2,7 +2,7 @@ import type { Server } from "bun";
 import type { Env } from "@/config/env";
 import { getLogger } from "@/config/logger";
 import { DEFAULT_LIMITS, ERROR_MESSAGES, WS_CLOSE_CODES } from "@/protocol/constants";
-import { createConnectedMessage, createErrorMessage, serializeMessage } from "@/protocol/messages";
+import { createConnectedMessage, createErrorMessage, parseMessage, serializeMessage } from "@/protocol/messages";
 import type { ErrorCode } from "@/protocol/types";
 import { MessageType } from "@/protocol/types/enums";
 import {
@@ -10,6 +10,7 @@ import {
     validateAuthPayload,
     validateControlPayload,
     validateDataPayload,
+    validateHeader,
 } from "@/protocol/validation";
 import { channelManager, type TypedWebSocket } from "@/server/channel";
 import { getRateLimiter } from "@/server/security";
@@ -85,7 +86,10 @@ export function createWebSocketHandlers(env: Env) {
             maxPayloadLength: env.MAX_MESSAGE_SIZE,
             perMessageDeflate: env.COMPRESSION_ENABLED,
             idleTimeout: env.IDLE_TIMEOUT,
+            backpressureLimit: 1024 * 1024, // 1 MiB
             closeOnBackpressureLimit: false,
+            sendPings: true,
+            publishToSelf: false,
 
             open(ws: TypedWebSocket) {
                 const wsLogger = logger.child({
@@ -117,12 +121,24 @@ export function createWebSocketHandlers(env: Env) {
                 });
 
                 const messageStr = typeof message === "string" ? message : message.toString("utf-8");
-                wsLogger.debug({ size: messageStr.length, authenticated }, "Message received");
+                const messageSizeBytes = Buffer.byteLength(messageStr, "utf-8");
 
-                let parsed: unknown;
-                try {
-                    parsed = JSON.parse(messageStr);
-                } catch {
+                wsLogger.debug({ sizeBytes: messageSizeBytes, authenticated }, "Message received");
+
+                if (messageSizeBytes > env.MAX_MESSAGE_SIZE) {
+                    wsLogger.warn({ sizeBytes: messageSizeBytes, maxSize: env.MAX_MESSAGE_SIZE }, "Message too large");
+                    channelManager.incrementError("MESSAGE_TOO_LARGE");
+                    const errorMsg = createErrorMessage(
+                        "MESSAGE_TOO_LARGE",
+                        `Message size ${messageSizeBytes} exceeds maximum ${env.MAX_MESSAGE_SIZE} bytes`,
+                    );
+                    ws.send(serializeMessage(errorMsg));
+                    ws.close(WS_CLOSE_CODES.MESSAGE_TOO_LARGE, "Message too large");
+                    return;
+                }
+
+                const parsed = parseMessage(messageStr);
+                if (!parsed) {
                     wsLogger.warn("Invalid JSON received");
                     channelManager.incrementError("INVALID_MESSAGE");
                     const errorMsg = createErrorMessage("INVALID_MESSAGE", "Invalid JSON format");
@@ -131,19 +147,24 @@ export function createWebSocketHandlers(env: Env) {
                     return;
                 }
 
-                const msgHeader = (parsed as { header?: { type?: string } }).header;
-                if (!msgHeader?.type) {
-                    wsLogger.warn("Message missing header.type");
-                    channelManager.incrementError("INVALID_MESSAGE");
-                    const errorMsg = createErrorMessage("INVALID_MESSAGE", "Message must have header.type");
+                const headerValidation = validateHeader(parsed);
+                if (!headerValidation.valid || !headerValidation.data) {
+                    wsLogger.warn({ error: headerValidation.error }, "Invalid message header");
+                    channelManager.incrementError(headerValidation.error?.code || "INVALID_MESSAGE");
+                    const errorMsg = createErrorMessage(
+                        headerValidation.error?.code || "INVALID_MESSAGE",
+                        headerValidation.error?.message || "Invalid message header",
+                    );
                     ws.send(serializeMessage(errorMsg));
-                    ws.close(WS_CLOSE_CODES.INVALID_MESSAGE, "Missing header.type");
+                    ws.close(WS_CLOSE_CODES.INVALID_MESSAGE, "Invalid message header");
                     return;
                 }
 
+                const msgType = headerValidation.data.type;
+
                 if (!authenticated) {
-                    if (msgHeader.type !== MessageType.AUTH) {
-                        wsLogger.warn({ type: msgHeader.type }, "Expected AUTH message");
+                    if (msgType !== MessageType.AUTH) {
+                        wsLogger.warn({ type: msgType }, "Expected AUTH message");
                         channelManager.incrementError("INVALID_SECRET");
                         const errorMsg = createErrorMessage(
                             "INVALID_SECRET",
@@ -158,14 +179,14 @@ export function createWebSocketHandlers(env: Env) {
                     return;
                 }
 
-                if (msgHeader.type === MessageType.AUTH) {
+                if (msgType === MessageType.AUTH) {
                     wsLogger.warn("AUTH message received after authentication");
                     return;
                 }
 
-                switch (msgHeader.type) {
+                switch (msgType) {
                     case MessageType.DATA: {
-                        handleDataMessage(ws, parsed, env.MAX_MESSAGE_SIZE, wsLogger);
+                        handleDataMessage(ws, parsed, wsLogger);
                         break;
                     }
                     case MessageType.ACK: {
@@ -177,11 +198,8 @@ export function createWebSocketHandlers(env: Env) {
                         break;
                     }
                     default: {
-                        wsLogger.warn({ type: msgHeader.type }, "Unknown message type");
-                        const errorMsg = createErrorMessage(
-                            "INVALID_MESSAGE",
-                            `Unknown message type: ${msgHeader.type}`,
-                        );
+                        wsLogger.warn({ type: msgType }, "Unknown message type");
+                        const errorMsg = createErrorMessage("INVALID_MESSAGE", `Unknown message type: ${msgType}`);
                         ws.send(serializeMessage(errorMsg));
                     }
                 }
@@ -300,13 +318,8 @@ function handleAuthMessage(
     wsLogger.info({ waitingForPeer }, "Authentication successful");
 }
 
-function handleDataMessage(
-    ws: TypedWebSocket,
-    message: unknown,
-    maxSize: number,
-    wsLogger: ReturnType<typeof getLogger>,
-) {
-    const validation = validateDataPayload(message, maxSize);
+function handleDataMessage(ws: TypedWebSocket, message: unknown, wsLogger: ReturnType<typeof getLogger>) {
+    const validation = validateDataPayload(message);
 
     if (!validation.valid || !validation.data) {
         wsLogger.warn({ error: validation.error }, "Invalid DATA message");
@@ -319,6 +332,7 @@ function handleDataMessage(
         return;
     }
 
+    const dataMsg = validation.data;
     const hasPeer = channelManager.hasPeer(ws.data.channelId, ws.data.deviceName);
 
     if (!hasPeer) {
@@ -328,6 +342,15 @@ function handleDataMessage(
         ws.send(serializeMessage(errorMsg));
         return;
     }
+
+    wsLogger.debug(
+        {
+            messageId: dataMsg.header.id,
+            contentType: dataMsg.payload.contentType,
+            sizeBytes: dataMsg.payload.metadata?.size,
+        },
+        "Relaying DATA message",
+    );
 
     const relayed = channelManager.relayToPeer(ws.data.channelId, ws.data.deviceName, JSON.stringify(message));
 
@@ -349,12 +372,22 @@ function handleAckMessage(ws: TypedWebSocket, message: unknown, wsLogger: Return
         return;
     }
 
+    const ackMsg = validation.data;
     const hasPeer = channelManager.hasPeer(ws.data.channelId, ws.data.deviceName);
 
     if (!hasPeer) {
         wsLogger.debug("No peer connected for ACK relay");
         return;
     }
+
+    wsLogger.debug(
+        {
+            ackId: ackMsg.header.id,
+            messageId: ackMsg.payload.messageId,
+            status: ackMsg.payload.status,
+        },
+        "Relaying ACK message",
+    );
 
     channelManager.relayToPeer(ws.data.channelId, ws.data.deviceName, JSON.stringify(message));
 }
@@ -370,6 +403,7 @@ function handleControlMessage(ws: TypedWebSocket, message: unknown, wsLogger: Re
         return;
     }
 
+    const controlMsg = validation.data;
     const hasPeer = channelManager.hasPeer(ws.data.channelId, ws.data.deviceName);
 
     if (!hasPeer) {
@@ -379,6 +413,14 @@ function handleControlMessage(ws: TypedWebSocket, message: unknown, wsLogger: Re
         ws.send(serializeMessage(errorMsg));
         return;
     }
+
+    wsLogger.debug(
+        {
+            messageId: controlMsg.header.id,
+            command: controlMsg.payload.command,
+        },
+        "Relaying CONTROL message",
+    );
 
     channelManager.relayToPeer(ws.data.channelId, ws.data.deviceName, JSON.stringify(message));
 }

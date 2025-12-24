@@ -268,7 +268,29 @@ class ChannelManager {
             return false;
         }
 
-        peer.ws.send(message);
+        const result = peer.ws.send(message);
+
+        if (result === -1) {
+            logger.warn(
+                {
+                    channelId,
+                    from: senderName,
+                    to: peer.deviceName,
+                    sizeBytes: message.length,
+                },
+                "Backpressure detected, message queued by Bun",
+            );
+        } else if (result === 0) {
+            logger.error(
+                {
+                    channelId,
+                    from: senderName,
+                    to: peer.deviceName,
+                },
+                "Message dropped, connection issue",
+            );
+            return false;
+        }
 
         this.messagesRelayed++;
         this.bytesTransferred += Buffer.byteLength(message, "utf8");
@@ -278,7 +300,8 @@ class ChannelManager {
                 channelId,
                 from: senderName,
                 to: peer.deviceName,
-                size: message.length,
+                sizeBytes: message.length,
+                bytesSent: result > 0 ? result : "queued",
             },
             "Message relayed to peer",
         );

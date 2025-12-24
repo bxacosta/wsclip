@@ -11,12 +11,3 @@ export function parseMessage(raw: string): unknown {
         return null;
     }
 }
-
-export function getMessageType(raw: string): string | null {
-    try {
-        const parsed = JSON.parse(raw) as { header?: { type?: string } };
-        return parsed.header?.type || null;
-    } catch {
-        return null;
-    }
-}
