@@ -1,9 +1,13 @@
 import type { Env } from "@/config/env";
 import { getLogger } from "@/config/logger";
-import { WS_CLOSE_CODES } from "@/protocol/constants";
+import { getCloseCode } from "@/protocol/errors";
+import type { ErrorCode } from "@/protocol/types";
 import { handleHealthCheck, handleNotFound, handleStats } from "@/server/http/routes";
 import { createWebSocketHandlers } from "@/server/websocket/handler";
 
+/**
+ * Maps error codes to HTTP status codes for upgrade failures.
+ */
 function getHttpStatusForError(errorCode: string | undefined): number {
     switch (errorCode) {
         case "RATE_LIMIT_EXCEEDED":
@@ -37,7 +41,7 @@ export function startServer(env: Env) {
                 }
 
                 const httpStatus = getHttpStatusForError(result.errorCode);
-                const wsCloseCode = result.errorCode ? WS_CLOSE_CODES[result.errorCode] : 4000;
+                const wsCloseCode = result.errorCode ? getCloseCode(result.errorCode as ErrorCode) : 4000;
 
                 return Response.json(
                     {

@@ -1,5 +1,5 @@
 import { getLogger } from "@/config/logger";
-import { channelManager } from "@/server/channel";
+import { getChannelManager } from "@/server/channel";
 import { getRateLimiter } from "@/server/security";
 
 export interface HealthResponse {
@@ -38,7 +38,7 @@ export function handleStats(authHeader: string | null, serverSecret: string): Re
         return new Response("Unauthorized", { status: 401 });
     }
 
-    const stats = channelManager.getStats();
+    const stats = getChannelManager().getStats();
     const rateLimitStats = getRateLimiter().getStats();
 
     const memUsage = process.memoryUsage();

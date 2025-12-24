@@ -1,15 +1,24 @@
 import type { Logger } from "pino";
-import { ERROR_MESSAGES } from "@/protocol/constants";
 import type { DataMessage } from "@/protocol/types";
-import { channelManager, type TypedWebSocket } from "@/server/channel";
-import { sendError } from "../middleware";
+import { getChannelManager, type TypedWebSocket } from "@/server/channel";
+import { handleProtocolError } from "@/server/errors";
 
+/**
+ * Handles DATA messages for content relay between peers.
+ *
+ * Validates that a peer is connected before relaying the message.
+ *
+ * @param ws - The WebSocket connection
+ * @param dataMsg - The parsed DATA message
+ * @param logger - Logger instance
+ */
 export function handleDataMessage(ws: TypedWebSocket, dataMsg: DataMessage, logger: Logger) {
+    const channelManager = getChannelManager();
     const hasPeer = channelManager.hasPeer(ws.data.channelId, ws.data.deviceName);
 
     if (!hasPeer) {
         logger.debug("No peer connected");
-        sendError(ws, "NO_PEER_CONNECTED", ERROR_MESSAGES.NO_PEER_CONNECTED, logger);
+        handleProtocolError(ws, "NO_PEER_CONNECTED", undefined, logger);
         return;
     }
 
@@ -26,6 +35,6 @@ export function handleDataMessage(ws: TypedWebSocket, dataMsg: DataMessage, logg
 
     if (!relayed) {
         logger.warn("Failed to relay DATA message");
-        sendError(ws, "NO_PEER_CONNECTED", "Peer disconnected", logger);
+        handleProtocolError(ws, "NO_PEER_CONNECTED", "Peer disconnected", logger);
     }
 }

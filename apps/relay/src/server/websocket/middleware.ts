@@ -1,33 +1,21 @@
 import type { Logger } from "pino";
-import { WS_CLOSE_CODES } from "@/protocol/constants";
-import { createErrorMessage, serializeMessage } from "@/protocol/messages";
-import type { ErrorCode } from "@/protocol/types";
 import type { ValidationResult } from "@/protocol/validation";
-import { channelManager, type TypedWebSocket } from "@/server/channel";
+import type { TypedWebSocket } from "@/server/channel";
+import { handleProtocolError } from "@/server/errors";
 
-export function sendError(ws: TypedWebSocket, errorCode: ErrorCode, message: string, logger: Logger) {
-    logger.warn({ errorCode }, message);
-    channelManager.incrementError(errorCode);
-    const errorMsg = createErrorMessage(errorCode, message);
-    ws.send(serializeMessage(errorMsg));
-}
-
-export function sendErrorAndClose(ws: TypedWebSocket, errorCode: ErrorCode, message: string, logger: Logger) {
-    logger.warn({ errorCode }, message);
-    channelManager.incrementError(errorCode);
-    const errorMsg = createErrorMessage(errorCode, message);
-    ws.send(serializeMessage(errorMsg));
-    ws.close(WS_CLOSE_CODES[errorCode], message);
-}
-
-export function handleValidationError(ws: TypedWebSocket, error: ValidationResult<unknown>["error"], logger: Logger) {
-    const errorCode = error?.code || "INVALID_MESSAGE";
-    const errorMessage = error?.message || "Invalid message format";
-    sendError(ws, errorCode, errorMessage, logger);
-}
-
+/**
+ * Type for message handler functions.
+ */
 export type MessageHandler<T> = (ws: TypedWebSocket, data: T, logger: Logger) => void | Promise<void>;
 
+/**
+ * Higher-order function that wraps a message handler with validation.
+ * If validation fails, sends an error response using handleProtocolError.
+ *
+ * @param validator - Validation function that returns ValidationResult
+ * @param handler - Message handler to call if validation succeeds
+ * @returns Wrapped handler function
+ */
 export function withValidation<T>(
     validator: (data: unknown) => ValidationResult<T>,
     handler: MessageHandler<T>,
@@ -36,7 +24,9 @@ export function withValidation<T>(
         const validation = validator(message);
 
         if (!validation.valid || !validation.data) {
-            handleValidationError(ws, validation.error, logger);
+            const errorCode = validation.error?.code || "INVALID_MESSAGE";
+            const errorMessage = validation.error?.message || "Invalid message format";
+            handleProtocolError(ws, errorCode, errorMessage, logger);
             return;
         }
 
