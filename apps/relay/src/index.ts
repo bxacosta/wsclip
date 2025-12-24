@@ -1,14 +1,13 @@
 import { loadEnv } from "@/config/env";
 import { flushLogger, getLogger, initLogger } from "@/config/logger";
+import { createShutdownMessage, serializeMessage } from "@/protocol/messages";
 import { startServer } from "@/server";
-import { getRateLimiter, initRateLimiter } from "@/utils/rateLimiter";
-import { channelManager } from "@/websocket/channel";
+import { channelManager } from "@/server/channel";
+import { getRateLimiter, initRateLimiter } from "@/server/security";
 
-// Initialize environment and logger first
 const env = loadEnv();
 initLogger(env);
 
-// Initialize rate limiter with environment configuration
 initRateLimiter({
     maxConnections: env.RATE_LIMIT_MAX,
     windowMs: env.RATE_LIMIT_WINDOW_MS,
@@ -17,35 +16,24 @@ initRateLimiter({
 const logger = getLogger();
 const server = startServer(env);
 
-// Enhanced graceful shutdown
 const shutdown = async (signal: string) => {
     logger.info({ signal }, "Shutdown signal received");
 
-    // Broadcast shutdown message to all connected devices
-    const shutdownMsg = {
-        type: "server_shutdown",
-        timestamp: new Date().toISOString(),
-        message: "Server is shutting down",
-    };
-
-    const recipientCount = channelManager.broadcastToAll(JSON.stringify(shutdownMsg));
+    const shutdownMsg = createShutdownMessage("Server is shutting down", 5);
+    const recipientCount = channelManager.broadcastToAll(serializeMessage(shutdownMsg));
 
     logger.info({ recipientCount }, "Shutdown notification sent to all devices");
 
-    // Wait 5 seconds for devices to disconnect gracefully
     logger.info("Waiting for graceful disconnect");
     await new Promise(resolve => setTimeout(resolve, 5000));
 
-    // Stop rate limiter cleanup
     getRateLimiter().stop();
 
-    // Stop server
     logger.info("Stopping server");
     await server.stop();
 
     logger.info("Shutdown complete");
 
-    // Flush logger before exit
     await flushLogger();
 
     process.exit(0);

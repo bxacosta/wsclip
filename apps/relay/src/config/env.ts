@@ -1,4 +1,4 @@
-import {z} from "zod";
+import { z } from "zod";
 
 const envSchema = z.object({
     SERVER_SECRET: z.string().min(1, "SERVER_SECRET is required"),
