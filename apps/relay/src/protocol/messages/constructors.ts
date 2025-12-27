@@ -1,11 +1,11 @@
 import { randomUUID } from "node:crypto";
 import type {
-    ClientInfo,
-    ConnectedMessage,
     ErrorCode,
     ErrorMessage,
-    PeerEventMessage,
+    Metadata,
     PeerEventType,
+    PeerMessage,
+    ReadyMessage,
     ShutdownMessage,
 } from "@/protocol/types";
 import { MessageType } from "@/protocol/types/enums";
@@ -14,44 +14,37 @@ export function createTimestamp(): string {
     return new Date().toISOString();
 }
 
-export function createConnectedMessage(
-    deviceName: string,
-    channelId: string,
-    waitingForPeer: boolean,
-    clientInfo?: ClientInfo,
-): ConnectedMessage {
+interface PeerInfo {
+    peerId: string;
+    metadata?: Metadata;
+}
+
+export function createReadyMessage(peerId: string, channelId: string, peer: PeerInfo | null): ReadyMessage {
     return {
         header: {
-            type: MessageType.CONNECTED,
+            type: MessageType.READY,
             id: randomUUID(),
             timestamp: createTimestamp(),
         },
         payload: {
-            deviceName,
+            peerId,
             channelId,
-            waitingForPeer,
-            ...(clientInfo && { clientInfo }),
+            peer,
         },
     };
 }
 
-export function createPeerEventMessage(
-    peerName: string,
-    event: PeerEventType,
-    clientInfo?: ClientInfo,
-    detail?: string,
-): PeerEventMessage {
+export function createPeerMessage(peerId: string, event: PeerEventType, metadata?: Metadata): PeerMessage {
     return {
         header: {
-            type: MessageType.PEER_EVENT,
+            type: MessageType.PEER,
             id: randomUUID(),
             timestamp: createTimestamp(),
         },
         payload: {
-            peerName,
+            peerId,
             event,
-            ...(clientInfo && { clientInfo }),
-            ...(detail && { detail }),
+            ...(metadata && { metadata }),
         },
     };
 }

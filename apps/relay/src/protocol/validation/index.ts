@@ -1,5 +1,6 @@
-import type { AckMessage, AuthMessage, ControlMessage, DataMessage, ErrorCode, MessageHeader } from "@/protocol/types";
-import { ackMessageSchema, authMessageSchema, controlMessageSchema, dataMessageSchema, headerSchema } from "./schemas";
+import type { AckMessage, ControlMessage, DataMessage, MessageHeader } from "@/protocol/schemas";
+import { ackMessageSchema, controlMessageSchema, dataMessageSchema, headerSchema } from "@/protocol/schemas";
+import type { ErrorCode } from "@/protocol/types/enums";
 
 export interface ValidationResult<T> {
     valid: boolean;
@@ -11,7 +12,20 @@ export interface ValidationResult<T> {
 }
 
 export function validateHeader(data: unknown): ValidationResult<MessageHeader> {
-    const result = headerSchema.safeParse(data);
+    // Extract header from message object
+    const message = data as { header?: unknown };
+
+    if (!message.header) {
+        return {
+            valid: false,
+            error: {
+                code: "INVALID_MESSAGE",
+                message: "Missing message header",
+            },
+        };
+    }
+
+    const result = headerSchema.safeParse(message.header);
 
     if (!result.success) {
         const firstIssue = result.error.issues[0];
@@ -20,26 +34,6 @@ export function validateHeader(data: unknown): ValidationResult<MessageHeader> {
             error: {
                 code: "INVALID_MESSAGE",
                 message: firstIssue?.message || "Invalid message header",
-            },
-        };
-    }
-
-    return {
-        valid: true,
-        data: result.data,
-    };
-}
-
-export function validateAuthPayload(data: unknown): ValidationResult<AuthMessage> {
-    const result = authMessageSchema.safeParse(data);
-
-    if (!result.success) {
-        const firstIssue = result.error.issues[0];
-        return {
-            valid: false,
-            error: {
-                code: "INVALID_MESSAGE",
-                message: firstIssue?.message || "Invalid AUTH message",
             },
         };
     }
