@@ -1,16 +1,8 @@
 export {
-    type AddDeviceResult,
+    type AddPeerResult,
     type ChannelManagerConfig,
-    channelManager,
     getChannelManager,
     initChannelManager,
     resetChannelManager,
 } from "./manager";
-export {
-    type Channel,
-    type ConnectionPhase,
-    type Device,
-    isAuthenticated,
-    type TypedWebSocket,
-    type WebSocketData,
-} from "./types";
+export type { Channel, Peer, TypedWebSocket, WebSocketData } from "./types";

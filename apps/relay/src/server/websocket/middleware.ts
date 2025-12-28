@@ -3,19 +3,9 @@ import type { ValidationResult } from "@/protocol/validation";
 import type { TypedWebSocket } from "@/server/channel";
 import { handleProtocolError } from "@/server/errors";
 
-/**
- * Type for message handler functions.
- */
 export type MessageHandler<T> = (ws: TypedWebSocket, data: T, logger: Logger) => void | Promise<void>;
 
-/**
- * Higher-order function that wraps a message handler with validation.
- * If validation fails, sends an error response using handleProtocolError.
- *
- * @param validator - Validation function that returns ValidationResult
- * @param handler - Message handler to call if validation succeeds
- * @returns Wrapped handler function
- */
+/** Wraps a handler with validation. Sends error via handleProtocolError if validation fails. */
 export function withValidation<T>(
     validator: (data: unknown) => ValidationResult<T>,
     handler: MessageHandler<T>,

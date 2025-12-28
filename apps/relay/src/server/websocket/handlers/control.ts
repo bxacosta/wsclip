@@ -3,18 +3,9 @@ import type { ControlMessage } from "@/protocol/types";
 import { getChannelManager, type TypedWebSocket } from "@/server/channel";
 import { handleProtocolError } from "@/server/errors";
 
-/**
- * Handles CONTROL messages for custom commands between peers.
- *
- * Validates that a peer is connected before relaying the message.
- *
- * @param ws - The WebSocket connection
- * @param controlMsg - The parsed CONTROL message
- * @param logger - Logger instance
- */
 export function handleControlMessage(ws: TypedWebSocket, controlMsg: ControlMessage, logger: Logger) {
     const channelManager = getChannelManager();
-    const hasPeer = channelManager.hasPeer(ws.data.channelId, ws.data.deviceName);
+    const hasPeer = channelManager.hasPeer(ws.data.channelId, ws.data.peerId);
 
     if (!hasPeer) {
         logger.debug("No peer connected for CONTROL relay");
@@ -30,5 +21,5 @@ export function handleControlMessage(ws: TypedWebSocket, controlMsg: ControlMess
         "Relaying CONTROL message",
     );
 
-    channelManager.relayToPeer(ws.data.channelId, ws.data.deviceName, JSON.stringify(controlMsg));
+    channelManager.relayToPeer(ws.data.channelId, ws.data.peerId, JSON.stringify(controlMsg));
 }

@@ -1,29 +1,18 @@
 import type { Server } from "bun";
 import { getLogger } from "@/config/logger";
-import { getDefaultMessage } from "@/protocol/errors";
+import { ERROR_CATALOG } from "@/protocol/errors";
 import type { ErrorCode } from "@/protocol/types";
-import { type ConnectionPhase, getChannelManager, type WebSocketData } from "@/server/channel";
+import { getChannelManager, type WebSocketData } from "@/server/channel";
 import { getRateLimiter } from "@/server/security";
-import { validateChannelId, validateDeviceName } from "./utils";
+import { validateChannelId, validatePeerId } from "./utils";
 
-/**
- * Result of a WebSocket upgrade attempt.
- */
 export interface UpgradeResult {
     success: boolean;
     errorCode?: ErrorCode;
     errorMessage?: string;
 }
 
-/**
- * Handles WebSocket upgrade requests.
- * Validates rate limits, channel ID, and device name before upgrading.
- *
- * @param req - The HTTP request to upgrade
- * @param server - The Bun server instance
- * @returns UpgradeResult indicating success or failure with error details
- */
-export function handleUpgrade(req: Request, server: Server<object>): UpgradeResult {
+export function handleUpgrade(req: Request, server: Server<object>, serverSecret: string): UpgradeResult {
     const logger = getLogger();
     const url = new URL(req.url);
     const ip = server.requestIP(req)?.address || "unknown";
@@ -35,41 +24,58 @@ export function handleUpgrade(req: Request, server: Server<object>): UpgradeResu
         return {
             success: false,
             errorCode: "RATE_LIMIT_EXCEEDED",
-            errorMessage: getDefaultMessage("RATE_LIMIT_EXCEEDED"),
+            errorMessage: ERROR_CATALOG.RATE_LIMIT_EXCEEDED.defaultMessage,
         };
     }
 
-    const channel = url.searchParams.get("channel") || "";
-    const deviceName = url.searchParams.get("deviceName") || "";
+    const channelId = url.searchParams.get("channelId") || "";
+    const peerId = url.searchParams.get("peerId") || "";
+    const querySecret = url.searchParams.get("secret") || "";
 
-    if (!validateChannelId(channel)) {
-        logger.warn({ channel }, "Invalid channel ID");
+    if (!validateChannelId(channelId)) {
+        logger.warn({ channelId }, "Invalid channel ID");
         channelManager.incrementError("INVALID_CHANNEL");
         return {
             success: false,
             errorCode: "INVALID_CHANNEL",
-            errorMessage: getDefaultMessage("INVALID_CHANNEL"),
+            errorMessage: ERROR_CATALOG.INVALID_CHANNEL.defaultMessage,
         };
     }
 
-    if (!validateDeviceName(deviceName)) {
-        logger.warn({ deviceName }, "Invalid device name");
-        channelManager.incrementError("INVALID_DEVICE_NAME");
+    if (!validatePeerId(peerId)) {
+        logger.warn({ peerId }, "Invalid peer ID");
+        channelManager.incrementError("INVALID_PEER_ID");
         return {
             success: false,
-            errorCode: "INVALID_DEVICE_NAME",
-            errorMessage: getDefaultMessage("INVALID_DEVICE_NAME"),
+            errorCode: "INVALID_PEER_ID",
+            errorMessage: ERROR_CATALOG.INVALID_PEER_ID.defaultMessage,
         };
     }
 
-    const initialPhase: ConnectionPhase = "authenticating";
+    // Dual authentication: Bearer header or query param secret
+    const authHeader = req.headers.get("Authorization");
+    let secret = "";
+
+    if (authHeader?.startsWith("Bearer ")) {
+        secret = authHeader.substring(7);
+    } else if (querySecret) {
+        secret = querySecret;
+    }
+
+    if (!secret || secret !== serverSecret) {
+        logger.warn({ peerId, channelId, hasBearer: !!authHeader, hasQuerySecret: !!querySecret }, "Invalid secret");
+        channelManager.incrementError("INVALID_SECRET");
+        return {
+            success: false,
+            errorCode: "INVALID_SECRET",
+            errorMessage: ERROR_CATALOG.INVALID_SECRET.defaultMessage,
+        };
+    }
 
     const data: WebSocketData = {
-        deviceName: deviceName.trim(),
-        channelId: channel,
+        peerId: peerId.trim(),
+        channelId: channelId,
         connectedAt: new Date(),
-        phase: initialPhase,
-        authTimeoutId: null,
     };
 
     const upgraded = server.upgrade(req, { data });
