@@ -1,27 +1,9 @@
 import type { Env } from "@/config/env";
 import { getLogger } from "@/config/logger";
-import { getCloseCode } from "@/protocol/errors";
+import { ERROR_CATALOG } from "@/protocol/errors";
 import type { ErrorCode } from "@/protocol/types";
 import { handleHealthCheck, handleNotFound, handleStats } from "@/server/http/routes";
 import { createWebSocketHandlers } from "@/server/websocket/handler";
-
-/**
- * Maps error codes to HTTP status codes for upgrade failures.
- */
-function getHttpStatusForError(errorCode: string | undefined): number {
-    switch (errorCode) {
-        case "RATE_LIMIT_EXCEEDED":
-            return 429;
-        case "INVALID_SECRET":
-            return 401;
-        case "INVALID_CHANNEL":
-        case "INVALID_DEVICE_NAME":
-        case "INVALID_MESSAGE":
-            return 400;
-        default:
-            return 400;
-    }
-}
 
 export function startServer(env: Env) {
     const logger = getLogger();
@@ -40,8 +22,9 @@ export function startServer(env: Env) {
                     return;
                 }
 
-                const httpStatus = getHttpStatusForError(result.errorCode);
-                const wsCloseCode = result.errorCode ? getCloseCode(result.errorCode as ErrorCode) : 4000;
+                const errorDef = result.errorCode ? ERROR_CATALOG[result.errorCode as ErrorCode] : null;
+                const httpStatus = errorDef?.httpStatus ?? 400;
+                const wsCloseCode = errorDef?.closeCode ?? 4000;
 
                 return Response.json(
                     {
