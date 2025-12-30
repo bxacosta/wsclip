@@ -1,6 +1,6 @@
 import type { Server } from "bun";
 import { getChannelManager } from "@/server/channel";
-import { flushLogger, getLogger } from "@/server/config/logger";
+import { flushLogger, getLogger } from "@/server/config";
 import { getRateLimiter } from "@/server/security";
 
 let isShuttingDown = false;

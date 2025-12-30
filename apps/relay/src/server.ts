@@ -1,16 +1,15 @@
 import { ERROR_CATALOG } from "@/protocol/errors";
 import type { ErrorCode } from "@/protocol/types";
-import type { Env } from "@/server/config/env";
-import { getLogger } from "@/server/config/logger";
+import { config, getLogger } from "@/server/config";
 import { handleHealthCheck, handleNotFound, handleStats } from "@/server/http/routes";
 import { createWebSocketHandlers } from "@/server/websocket/handler";
 
-export function startServer(env: Env) {
+export function startServer() {
     const logger = getLogger();
-    const wsHandlers = createWebSocketHandlers(env);
+    const wsHandlers = createWebSocketHandlers();
 
     const server = Bun.serve({
-        port: env.PORT,
+        port: config.port,
 
         fetch(req, server) {
             const url = new URL(req.url);
@@ -42,7 +41,7 @@ export function startServer(env: Env) {
 
             if (url.pathname === "/stats" && req.method === "GET") {
                 const authHeader = req.headers.get("Authorization");
-                return handleStats(authHeader, env.SERVER_SECRET);
+                return handleStats(authHeader, config.serverSecret);
             }
 
             return handleNotFound();
@@ -60,9 +59,9 @@ export function startServer(env: Env) {
         {
             port: server.port,
             bunVersion: Bun.version,
-            compression: env.COMPRESSION_ENABLED,
-            maxPayloadSize: env.MAX_MESSAGE_SIZE,
-            idleTimeout: env.IDLE_TIMEOUT,
+            compression: config.compression,
+            maxMessageSize: config.maxMessageSize,
+            idleTimeoutSec: config.idleTimeoutSec,
         },
         "Server started",
     );

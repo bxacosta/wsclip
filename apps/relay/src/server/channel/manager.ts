@@ -2,7 +2,7 @@ import { ERROR_MESSAGES } from "@/protocol/errors";
 import { createPeerMessage, serializeMessage } from "@/protocol/messages";
 import type { ErrorCode } from "@/protocol/types";
 import { PeerEventType } from "@/protocol/types/enums";
-import { getLogger } from "@/server/config/logger";
+import { getLogger } from "@/server/config";
 import type { Channel, Peer, TypedWebSocket } from "./types";
 
 export interface ChannelManagerConfig {
@@ -320,34 +320,6 @@ class ChannelManager {
         return true;
     }
 
-    /** Broadcasts a message to all connected peers (e.g., shutdown notification) */
-    broadcastToAll(message: string): number {
-        const logger = getLogger();
-        let sentCount = 0;
-
-        for (const channel of this.channels.values()) {
-            for (const peer of channel.peers.values()) {
-                try {
-                    peer.ws.send(message);
-                    sentCount++;
-                } catch (error) {
-                    logger.error(
-                        {
-                            err: error,
-                            peerId: peer.peerId,
-                            channelId: channel.channelId,
-                        },
-                        "Broadcast send failed",
-                    );
-                }
-            }
-        }
-
-        logger.info({ recipientCount: sentCount }, "Broadcast message sent");
-        return sentCount;
-    }
-
-    /** Closes all WebSocket connections with specified code and reason */
     closeAllConnections(code: number, reason: string): number {
         const logger = getLogger();
         let closedCount = 0;

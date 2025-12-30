@@ -3,7 +3,7 @@ import { createReadyMessage, parseMessage, serializeMessage } from "@/protocol/m
 import { MessageType } from "@/protocol/types/enums";
 import { validateAckPayload, validateControlPayload, validateDataPayload, validateHeader } from "@/protocol/validation";
 import { getChannelManager, type TypedWebSocket } from "@/server/channel";
-import type { Env } from "@/server/config/env";
+import { config } from "@/server/config";
 import { handleProtocolError } from "@/server/errors";
 import { handleAckMessage, handleControlMessage, handleDataMessage } from "./handlers";
 import { withValidation } from "./middleware";
@@ -12,14 +12,14 @@ import { createWebSocketLogger } from "./utils";
 
 export type { UpgradeResult };
 
-export function createWebSocketHandlers(env: Env) {
+export function createWebSocketHandlers() {
     return {
-        upgrade: (req: Request, server: Server<object>) => handleUpgrade(req, server, env.SERVER_SECRET),
+        upgrade: (req: Request, server: Server<object>) => handleUpgrade(req, server, config.serverSecret),
 
         websocket: {
-            maxPayloadLength: env.MAX_MESSAGE_SIZE,
-            perMessageDeflate: env.COMPRESSION_ENABLED,
-            idleTimeout: env.IDLE_TIMEOUT,
+            maxPayloadLength: config.maxMessageSize,
+            perMessageDeflate: config.compression,
+            idleTimeout: config.idleTimeoutSec,
             backpressureLimit: 1024 * 1024,
             closeOnBackpressureLimit: false,
             sendPings: true,
@@ -61,12 +61,12 @@ export function createWebSocketHandlers(env: Env) {
 
                 wsLogger.debug({ sizeBytes: messageSizeBytes }, "Message received");
 
-                if (messageSizeBytes > env.MAX_MESSAGE_SIZE) {
-                    wsLogger.warn({ sizeBytes: messageSizeBytes, maxSize: env.MAX_MESSAGE_SIZE }, "Message too large");
+                if (messageSizeBytes > config.maxMessageSize) {
+                    wsLogger.warn({ sizeBytes: messageSizeBytes, maxSize: config.maxMessageSize }, "Message too large");
                     handleProtocolError(
                         ws,
                         "MESSAGE_TOO_LARGE",
-                        `Message size ${messageSizeBytes} exceeds maximum ${env.MAX_MESSAGE_SIZE} bytes`,
+                        `Message size ${messageSizeBytes} exceeds maximum ${config.maxMessageSize} bytes`,
                         wsLogger,
                     );
                     return;

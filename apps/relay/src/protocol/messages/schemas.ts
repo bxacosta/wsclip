@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ContentType, ErrorCode, MessageType, PeerEventType } from "@/protocol/types/enums";
+import { ContentType, ErrorCode, MessageType, PeerEventType } from "@/protocol/types/enums.ts";
 
 export const headerSchema = z.strictObject({
     type: z.enum([

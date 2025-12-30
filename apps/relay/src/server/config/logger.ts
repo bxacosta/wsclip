@@ -1,20 +1,21 @@
 import pino from "pino";
-import type { Env } from "@/server/config/env.ts";
+import { getConfig } from "./loader";
 
 export type Logger = pino.Logger;
 
 let logger: Logger;
 
-export function initLogger(env: Env): Logger {
-    logger = pino({
-        level: env.LOG_LEVEL,
+export function initLogger(): Logger {
+    const cfg = getConfig();
 
-        // Add error serializer for better stack traces
+    logger = pino({
+        level: cfg.logLevel,
+
         serializers: {
             err: pino.stdSerializers.err,
         },
 
-        ...(env.NODE_ENV === "development"
+        ...(cfg.nodeEnv === "development"
             ? {
                   transport: {
                       target: "pino-pretty",
@@ -38,12 +39,11 @@ export function initLogger(env: Env): Logger {
 
 export function getLogger(): Logger {
     if (!logger) {
-        throw new Error("Logger not initialized. Call initLogger(env) first.");
+        throw new Error("Logger not initialized. Call initLogger() first.");
     }
     return logger;
 }
 
-// Flush logger before shutdown to prevent log loss
 export async function flushLogger(): Promise<void> {
     if (!logger) return;
 

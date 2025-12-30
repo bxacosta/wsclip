@@ -2,7 +2,7 @@ import type { Server } from "bun";
 import { ERROR_MESSAGES } from "@/protocol/errors";
 import type { ErrorCode } from "@/protocol/types";
 import { getChannelManager, type WebSocketData } from "@/server/channel";
-import { getLogger } from "@/server/config/logger";
+import { getLogger } from "@/server/config";
 import { getRateLimiter } from "@/server/security";
 import { validateChannelId, validatePeerId } from "./utils";
 

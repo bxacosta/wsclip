@@ -1,5 +1,10 @@
-import type { AckMessage, ControlMessage, DataMessage, MessageHeader } from "@/protocol/schemas";
-import { ackMessageSchema, controlMessageSchema, dataMessageSchema, headerSchema } from "@/protocol/schemas";
+import type { AckMessage, ControlMessage, DataMessage, MessageHeader } from "@/protocol/messages/schemas.ts";
+import {
+    ackMessageSchema,
+    controlMessageSchema,
+    dataMessageSchema,
+    headerSchema,
+} from "@/protocol/messages/schemas.ts";
 import type { ErrorCode } from "@/protocol/types/enums";
 
 export interface ValidationResult<T> {

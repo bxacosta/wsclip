@@ -1,4 +1,4 @@
-import { getLogger } from "@/server/config/logger";
+import { getLogger } from "@/server/config";
 
 interface RateLimitEntry {
     count: number;
@@ -7,7 +7,7 @@ interface RateLimitEntry {
 
 export interface RateLimiterConfig {
     maxConnections: number;
-    windowMs: number;
+    windowSec: number;
 }
 
 class RateLimiter {
@@ -18,7 +18,7 @@ class RateLimiter {
 
     constructor(config: RateLimiterConfig) {
         this.maxConnections = config.maxConnections;
-        this.windowMs = config.windowMs;
+        this.windowMs = config.windowSec * 1000;
         this.startCleanup();
     }
 
@@ -87,7 +87,7 @@ class RateLimiter {
     getStats() {
         return {
             trackedIPs: this.limits.size,
-            maxConnectionsPerMinute: this.maxConnections,
+            maxConnections: this.maxConnections,
             windowMs: this.windowMs,
         };
     }
