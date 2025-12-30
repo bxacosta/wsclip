@@ -1,13 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type {
-    ErrorCode,
-    ErrorMessage,
-    Metadata,
-    PeerEventType,
-    PeerMessage,
-    ReadyMessage,
-    ShutdownMessage,
-} from "@/protocol/types";
+import type { ErrorCode, ErrorMessage, Metadata, PeerEventType, PeerMessage, ReadyMessage } from "@/protocol/types";
 import { MessageType } from "@/protocol/types/enums";
 
 export function createTimestamp(): string {
@@ -66,20 +58,6 @@ export function createErrorMessage(
             message,
             ...(messageId && { messageId }),
             ...(details && { details }),
-        },
-    };
-}
-
-export function createShutdownMessage(message: string, gracePeriod?: number): ShutdownMessage {
-    return {
-        header: {
-            type: MessageType.SHUTDOWN,
-            id: randomUUID(),
-            timestamp: createTimestamp(),
-        },
-        payload: {
-            message,
-            ...(gracePeriod !== undefined && { gracePeriod }),
         },
     };
 }

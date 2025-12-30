@@ -9,7 +9,6 @@ export const headerSchema = z.strictObject({
         MessageType.READY,
         MessageType.PEER,
         MessageType.ERROR,
-        MessageType.SHUTDOWN,
     ]),
     id: z.uuid(),
     timestamp: z.iso.datetime(),
@@ -83,9 +82,6 @@ export const peerMessageSchema = z.object({
     payload: peerPayloadSchema,
 });
 
-/**
- * ERROR message payload schema
- */
 export const errorPayloadSchema = z.strictObject({
     code: z.enum([
         ErrorCode.INVALID_SECRET,
@@ -105,22 +101,9 @@ export const errorPayloadSchema = z.strictObject({
     details: z.record(z.string(), z.unknown()).optional(),
 });
 
-/**
- * ERROR message schema (complete)
- */
 export const errorMessageSchema = z.object({
     header: headerSchema.extend({ type: z.literal(MessageType.ERROR) }),
     payload: errorPayloadSchema,
-});
-
-export const shutdownPayloadSchema = z.strictObject({
-    message: z.string(),
-    gracePeriod: z.number().optional(),
-});
-
-export const shutdownMessageSchema = z.object({
-    header: headerSchema.extend({ type: z.literal(MessageType.SHUTDOWN) }),
-    payload: shutdownPayloadSchema,
 });
 
 export type MessageHeader = z.infer<typeof headerSchema>;
@@ -138,13 +121,5 @@ export type AckMessage = z.infer<typeof ackMessageSchema>;
 export type ReadyMessage = z.infer<typeof readyMessageSchema>;
 export type PeerMessage = z.infer<typeof peerMessageSchema>;
 export type ErrorMessage = z.infer<typeof errorMessageSchema>;
-export type ShutdownMessage = z.infer<typeof shutdownMessageSchema>;
 
-export type CRSPMessage =
-    | ControlMessage
-    | DataMessage
-    | AckMessage
-    | ReadyMessage
-    | PeerMessage
-    | ErrorMessage
-    | ShutdownMessage;
+export type CRSPMessage = ControlMessage | DataMessage | AckMessage | ReadyMessage | PeerMessage | ErrorMessage;

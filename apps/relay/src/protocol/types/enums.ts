@@ -5,7 +5,6 @@ export const MessageType = {
     READY: "ready",
     PEER: "peer",
     ERROR: "error",
-    SHUTDOWN: "shutdown",
 } as const;
 
 export type MessageType = (typeof MessageType)[keyof typeof MessageType];
