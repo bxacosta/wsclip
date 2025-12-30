@@ -1,5 +1,5 @@
-import { getLogger } from "@/server/config/logger";
 import type { TypedWebSocket } from "@/server/channel";
+import { getLogger } from "@/server/config/logger";
 
 export function validateChannelId(channel: string): boolean {
     return /^[a-zA-Z0-9]{8}$/.test(channel);

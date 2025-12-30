@@ -113,7 +113,7 @@ export const errorMessageSchema = z.object({
     payload: errorPayloadSchema,
 });
 
-export const shutdownPayloadSchema = z.object({
+export const shutdownPayloadSchema = z.strictObject({
     message: z.string(),
     gracePeriod: z.number().optional(),
 });

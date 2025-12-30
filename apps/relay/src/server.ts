@@ -1,7 +1,7 @@
-import type { Env } from "@/server/config/env";
-import { getLogger } from "@/server/config/logger";
 import { ERROR_CATALOG } from "@/protocol/errors";
 import type { ErrorCode } from "@/protocol/types";
+import type { Env } from "@/server/config/env";
+import { getLogger } from "@/server/config/logger";
 import { handleHealthCheck, handleNotFound, handleStats } from "@/server/http/routes";
 import { createWebSocketHandlers } from "@/server/websocket/handler";
 

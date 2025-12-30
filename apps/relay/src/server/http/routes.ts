@@ -1,5 +1,5 @@
-import { getLogger } from "@/server/config/logger";
 import { getChannelManager } from "@/server/channel";
+import { getLogger } from "@/server/config/logger";
 import { getRateLimiter } from "@/server/security";
 
 export interface HealthResponse {

@@ -1,8 +1,8 @@
-import { getLogger } from "@/server/config/logger";
 import { ERROR_CATALOG } from "@/protocol/errors";
 import { createPeerMessage, serializeMessage } from "@/protocol/messages";
 import type { ErrorCode } from "@/protocol/types";
 import { PeerEventType } from "@/protocol/types/enums";
+import { getLogger } from "@/server/config/logger";
 import type { Channel, Peer, TypedWebSocket } from "./types";
 
 export interface ChannelManagerConfig {
@@ -345,6 +345,33 @@ class ChannelManager {
 
         logger.info({ recipientCount: sentCount }, "Broadcast message sent");
         return sentCount;
+    }
+
+    /** Closes all WebSocket connections with specified code and reason */
+    closeAllConnections(code: number, reason: string): number {
+        const logger = getLogger();
+        let closedCount = 0;
+
+        for (const channel of this.channels.values()) {
+            for (const peer of channel.peers.values()) {
+                try {
+                    peer.ws.close(code, reason);
+                    closedCount++;
+                } catch (error) {
+                    logger.error(
+                        {
+                            err: error,
+                            peerId: peer.peerId,
+                            channelId: channel.channelId,
+                        },
+                        "Connection close failed",
+                    );
+                }
+            }
+        }
+
+        logger.info({ closedCount, code, reason }, "All connections closed");
+        return closedCount;
     }
 
     getStats() {

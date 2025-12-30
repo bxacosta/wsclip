@@ -1,9 +1,9 @@
 import type { Server } from "bun";
-import type { Env } from "@/server/config/env";
 import { createReadyMessage, parseMessage, serializeMessage } from "@/protocol/messages";
 import { MessageType } from "@/protocol/types/enums";
 import { validateAckPayload, validateControlPayload, validateDataPayload, validateHeader } from "@/protocol/validation";
 import { getChannelManager, type TypedWebSocket } from "@/server/channel";
+import type { Env } from "@/server/config/env";
 import { handleProtocolError } from "@/server/errors";
 import { handleAckMessage, handleControlMessage, handleDataMessage } from "./handlers";
 import { withValidation } from "./middleware";

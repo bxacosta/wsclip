@@ -1,8 +1,8 @@
 import type { Server } from "bun";
-import { getLogger } from "@/server/config/logger";
 import { ERROR_CATALOG } from "@/protocol/errors";
 import type { ErrorCode } from "@/protocol/types";
 import { getChannelManager, type WebSocketData } from "@/server/channel";
+import { getLogger } from "@/server/config/logger";
 import { getRateLimiter } from "@/server/security";
 import { validateChannelId, validatePeerId } from "./utils";
 

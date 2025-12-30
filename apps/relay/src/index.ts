@@ -1,9 +1,9 @@
-import { loadEnv } from "@/server/config/env";
-import { flushLogger, getLogger, initLogger } from "@/server/config/logger";
 import { PROTOCOL_CONFIG } from "@/protocol/constants";
 import { createShutdownMessage, serializeMessage } from "@/protocol/messages";
 import { startServer } from "@/server";
 import { getChannelManager, initChannelManager } from "@/server/channel";
+import { loadEnv } from "@/server/config/env";
+import { flushLogger, getLogger, initLogger } from "@/server/config/logger";
 import { setChannelManagerGetter } from "@/server/errors";
 import { getRateLimiter, initRateLimiter } from "@/server/security";
 
@@ -42,6 +42,10 @@ const shutdown = async (signal: string) => {
 
     logger.info("Waiting for graceful disconnect");
     await new Promise(resolve => setTimeout(resolve, 5000));
+
+    logger.info("Closing all WebSocket connections");
+    const closedCount = getChannelManager().closeAllConnections(1001, "Server shutting down");
+    logger.info({ closedCount }, "All connections closed");
 
     getRateLimiter().stop();
 
