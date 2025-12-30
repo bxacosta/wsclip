@@ -3,8 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WSClip Relay Tester</title>
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <title>CRSP Relay Playground</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap"
+          rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
@@ -17,531 +18,734 @@
             }
         }
     </script>
+    <style>
+        :root {
+            color-scheme: dark;
+        }
+
+        /* Category badges */
+        .log-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        /* System Messages (server -> client) - Blue tones */
+        .badge-ready {
+            background: rgba(59, 130, 246, 0.15);
+            color: #60a5fa;
+            border: 1px solid rgba(59, 130, 246, 0.3);
+        }
+
+        .badge-peer {
+            background: rgba(139, 92, 246, 0.15);
+            color: #a78bfa;
+            border: 1px solid rgba(139, 92, 246, 0.3);
+        }
+
+        .badge-error {
+            background: rgba(239, 68, 68, 0.15);
+            color: #f87171;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        .badge-shutdown {
+            background: rgba(251, 146, 60, 0.15);
+            color: #fb923c;
+            border: 1px solid rgba(251, 146, 60, 0.3);
+        }
+
+        /* Data Messages (client <-> client) - Green/Cyan tones */
+        .badge-data {
+            background: rgba(34, 197, 94, 0.15);
+            color: #4ade80;
+            border: 1px solid rgba(34, 197, 94, 0.3);
+        }
+
+        .badge-ack {
+            background: rgba(20, 184, 166, 0.15);
+            color: #2dd4bf;
+            border: 1px solid rgba(20, 184, 166, 0.3);
+        }
+
+        /* Control Messages (client <-> client) - Yellow tones */
+        .badge-control {
+            background: rgba(234, 179, 8, 0.15);
+            color: #facc15;
+            border: 1px solid rgba(234, 179, 8, 0.3);
+        }
+
+        /* Local/Client logs - Neutral */
+        .badge-client {
+            background: rgba(115, 115, 115, 0.15);
+            color: #a3a3a3;
+            border: 1px solid rgba(115, 115, 115, 0.3);
+        }
+    </style>
 </head>
 <body class="h-screen flex flex-col overflow-hidden bg-black text-white font-mono antialiased">
 
-    <!-- TOP HEADER -->
-    <header class="h-12 border-b border-neutral-900 bg-black flex items-center justify-between px-6 shrink-0">
-        <div class="flex items-center gap-4">
-            <h1 class="text-sm font-bold tracking-wider">
-                RELAY<span class="text-neutral-400">TESTER</span>
-            </h1>
-        </div>
-        <div class="text-xs text-neutral-400 uppercase tracking-wider">WebSocket Relay Test Client</div>
-    </header>
-
-    <!-- MAIN WORKSPACE -->
-    <div class="flex-1 flex overflow-hidden">
-
-        <!-- LEFT SIDEBAR: Connection & Status -->
-        <aside class="w-96 bg-black border-r border-neutral-900 flex flex-col shrink-0 overflow-y-auto" aria-label="Connection and Status Pannel">
-
-            <!-- Connection Section -->
-            <div class="p-5 border-b border-neutral-900">
-                <div class="text-xs text-neutral-600 uppercase tracking-wider mb-3 font-semibold">Connection</div>
-
-                <div class="space-y-2.5">
-                    <input id="serverUrl" type="text" value="ws://localhost:3000" placeholder="Server URL"
-                           class="w-full px-3 py-2 bg-neutral-950 border border-neutral-900 rounded text-sm placeholder:text-neutral-500 focus:outline-none focus:border-neutral-700 focus:bg-neutral-900 transition-all">
-
-                    <input id="channel" type="text" placeholder="Channel ID" maxlength="8" value="TEST1234"
-                           class="w-full px-3 py-2 bg-neutral-950 border border-neutral-900 rounded text-sm placeholder:text-neutral-500 focus:outline-none focus:border-neutral-700 focus:bg-neutral-900 transition-all uppercase">
-
-                    <input id="deviceName" type="text" placeholder="Device Name" value="Device1"
-                           class="w-full px-3 py-2 bg-neutral-950 border border-neutral-900 rounded text-sm placeholder:text-neutral-500 focus:outline-none focus:border-neutral-700 focus:bg-neutral-900 transition-all">
-
-                    <input id="secret" type="text" placeholder="Secret" value="dev-secret-key-2025"
-                           class="w-full px-3 py-2 bg-neutral-950 border border-neutral-900 rounded text-sm placeholder:text-neutral-500 focus:outline-none focus:border-neutral-700 focus:bg-neutral-900 transition-all">
-
-                    <button id="connectBtn" class="w-full px-3 py-2 rounded text-sm font-semibold transition-all bg-white text-black border border-white hover:bg-neutral-200 hover:border-neutral-200 mt-1">
-                        Connect
-                    </button>
-                </div>
-            </div>
-
-            <!-- Status Section -->
-            <div class="p-5 border-b border-neutral-900">
-                <div class="text-xs text-neutral-600 uppercase tracking-wider mb-3 font-semibold">Status</div>
-
-                <div class="bg-neutral-950 border border-neutral-900 rounded p-3 space-y-2.5">
-                    <div class="flex items-center justify-between">
-                        <span class="text-neutral-400 text-sm">Connection</span>
-                        <span id="statusConnection" class="font-medium text-neutral-500 text-sm">Disconnected</span>
-                    </div>
-                    <div class="flex items-center justify-between">
-                        <span class="text-neutral-400 text-sm">Channel</span>
-                        <span id="statusChannel" class="font-medium text-neutral-500 text-sm">—</span>
-                    </div>
-                    <div class="flex items-center justify-between">
-                        <span class="text-neutral-400 text-sm">Device</span>
-                        <span id="statusDevice" class="font-medium text-neutral-500 text-sm">—</span>
-                    </div>
-                    <div class="flex items-center justify-between">
-                        <span class="text-neutral-400 text-sm">Partner</span>
-                        <span id="statusPartner" class="font-medium text-neutral-500 text-sm">—</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Info Section -->
-            <div class="p-5 flex-1">
-                <div class="text-xs text-neutral-600 uppercase tracking-wider mb-3 font-semibold">Test Scenarios</div>
-                <div class="space-y-2 text-sm text-neutral-400 leading-relaxed">
-                    <div class="flex gap-2">
-                        <span class="text-neutral-500 shrink-0">→</span>
-                        <span>Send clipboard messages between devices</span>
-                    </div>
-                    <div class="flex gap-2">
-                        <span class="text-neutral-500 shrink-0">→</span>
-                        <span>Test rate limiting (10 conn/IP/min)</span>
-                    </div>
-                    <div class="flex gap-2">
-                        <span class="text-neutral-500 shrink-0">→</span>
-                        <span>Graceful shutdown (Ctrl+C server)</span>
-                    </div>
-                    <div class="flex gap-2">
-                        <span class="text-neutral-500 shrink-0">→</span>
-                        <span>Check /stats for metrics</span>
-                    </div>
-                </div>
-            </div>
-
-        </aside>
-
-        <!-- CENTER: Console -->
-        <main class="flex-1 flex flex-col bg-neutral-950 min-w-0">
-            <!-- Console Header -->
-            <div class="h-10 border-b border-neutral-900 flex items-center justify-between px-5 bg-black">
-                <h2 class="text-xs font-semibold text-neutral-500 uppercase tracking-wider">Console Output</h2>
-                <div class="flex items-center gap-4">
-                    <label class="flex items-center gap-1.5 cursor-pointer">
-                        <input id="autoscroll" type="checkbox" checked class="w-3 h-3 accent-white">
-                        <span class="text-xs text-neutral-600">Autoscroll</span>
-                    </label>
-                    <button id="clearBtn" class="text-xs text-neutral-600 hover:text-white transition-colors uppercase tracking-wider">
-                        Clear
-                    </button>
-                </div>
-            </div>
-
-            <!-- Console Output -->
-            <div id="console" class="flex-1 overflow-y-auto p-5 space-y-1 leading-tight select-text">
-                <div class="text-neutral-500 text-sm">// Ready to connect...</div>
-            </div>
-        </main>
-
-        <!-- RIGHT SIDEBAR: Send Message -->
-        <aside class="w-[448px] bg-black border-l border-neutral-900 flex flex-col shrink-0" aria-label="Send Message Pannel">
-            <div class="p-5 flex-1 flex flex-col">
-                <div class="text-xs text-neutral-600 uppercase tracking-wider mb-3 font-semibold">Send Message</div>
-
-                <div class="space-y-2.5 flex-1 flex flex-col">
-                    <!-- Content Type -->
-                    <select id="contentType" class="w-full px-3 py-2 bg-neutral-950 border border-neutral-900 rounded text-sm focus:outline-none focus:border-neutral-700 cursor-pointer">
-                        <option value="text">Text</option>
-                        <option value="image">Image (base64)</option>
-                        <option value="file">File (base64)</option>
-                    </select>
-
-                    <!-- MIME Type -->
-                    <input id="mimeType" type="text" placeholder="MIME Type (e.g., text/plain)" value="text/plain"
-                           class="w-full px-3 py-2 bg-neutral-950 border border-neutral-900 rounded text-sm placeholder:text-neutral-500 focus:outline-none focus:border-neutral-700 focus:bg-neutral-900 transition-all">
-
-                    <!-- Filename (optional) -->
-                    <input id="filename" type="text" placeholder="Filename (optional)"
-                           class="w-full px-3 py-2 bg-neutral-950 border border-neutral-900 rounded text-sm placeholder:text-neutral-500 focus:outline-none focus:border-neutral-700 focus:bg-neutral-900 transition-all">
-
-                    <!-- Message Content -->
-                    <textarea id="messageData" rows="12" placeholder="Message content or base64 data..." spellcheck="false"
-                              class="flex-1 w-full px-3 py-2 bg-neutral-950 border border-neutral-900 rounded text-sm placeholder:text-neutral-500 focus:outline-none focus:border-neutral-700 focus:bg-neutral-900 transition-all resize-none leading-relaxed"></textarea>
-
-                    <!-- Actions -->
-                    <div class="grid grid-cols-2 gap-2 pt-1">
-                        <button id="clearMsgBtn" class="px-3 py-2 bg-neutral-950 border border-neutral-900 rounded text-sm hover:bg-neutral-900 hover:border-neutral-800 transition-colors">
-                            Clear
-                        </button>
-                        <button id="sendBtn" disabled class="px-3 py-2 rounded text-sm font-semibold transition-all bg-white text-black border border-white hover:bg-neutral-200 hover:border-neutral-200 disabled:bg-neutral-800 disabled:text-neutral-500 disabled:border-neutral-800 disabled:cursor-not-allowed">
-                            Send
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </aside>
-
+<!-- TOP HEADER -->
+<header class="h-12 border-b border-neutral-900 bg-black flex items-center justify-between px-6 shrink-0">
+    <div class="flex items-center gap-4">
+        <h1 class="text-sm font-bold tracking-wider">
+            CRSP<span class="text-neutral-400">PLAYGROUND</span>
+        </h1>
     </div>
+    <div class="text-xs text-neutral-400 uppercase tracking-wider">Content Relay Sync Protocol</div>
+</header>
 
-    <script>
-        // ==================== State Management ====================
-        let ws = null;
-        let connectionState = {
-            connected: false,
-            channel: null,
-            device: null,
-            partner: null,
-            waitingForPartner: false
+<!-- MAIN WORKSPACE -->
+<div class="flex-1 flex overflow-hidden">
+
+    <!-- LEFT SIDEBAR: Connection & Status -->
+    <aside class="w-96 bg-black border-r border-neutral-900 flex flex-col shrink-0 overflow-y-auto"
+           aria-label="Connection and Status Pannel">
+
+        <!-- Connection Section -->
+        <div class="p-5 border-b border-neutral-900">
+            <div class="text-xs text-neutral-400 uppercase tracking-wider mb-3 font-semibold">Connection</div>
+
+            <div class="space-y-2.5">
+                <input id="serverUrl" type="text" value="ws://localhost:3000" placeholder="Server URL"
+                       class="w-full px-3 py-2 bg-neutral-950 border border-neutral-900 rounded text-sm placeholder:text-neutral-500 focus:outline-none focus:border-neutral-700 focus:bg-neutral-900 transition-all">
+
+                <input id="channelId" type="text" placeholder="Channel ID" maxlength="8" value="TEST1234"
+                       class="w-full px-3 py-2 bg-neutral-950 border border-neutral-900 rounded text-sm placeholder:text-neutral-500 focus:outline-none focus:border-neutral-700 focus:bg-neutral-900 transition-all uppercase">
+
+                <input id="peerId" type="text" placeholder="Peer ID" value="peer-1"
+                       class="w-full px-3 py-2 bg-neutral-950 border border-neutral-900 rounded text-sm placeholder:text-neutral-500 focus:outline-none focus:border-neutral-700 focus:bg-neutral-900 transition-all">
+
+                <input id="secret" type="text" placeholder="Secret" value="dev-secret-key-2025"
+                       class="w-full px-3 py-2 bg-neutral-950 border border-neutral-900 rounded text-sm placeholder:text-neutral-500 focus:outline-none focus:border-neutral-700 focus:bg-neutral-900 transition-all">
+
+                <button id="connectBtn"
+                        class="w-full px-3 py-2 rounded text-sm font-semibold transition-all bg-white text-black border border-white hover:bg-neutral-200 hover:border-neutral-200 mt-1">
+                    Connect
+                </button>
+            </div>
+        </div>
+
+        <!-- Status Section -->
+        <div class="p-5 border-b border-neutral-900">
+            <div class="text-xs text-neutral-400 uppercase tracking-wider mb-3 font-semibold">Status</div>
+
+            <div class="bg-neutral-950 border border-neutral-900 rounded p-3 space-y-2.5">
+                <div class="flex items-center justify-between">
+                    <span class="text-neutral-300 text-sm">Connection</span>
+                    <span id="statusConnection" class="font-medium text-neutral-500 text-sm">Disconnected</span>
+                </div>
+                <div class="flex items-center justify-between">
+                    <span class="text-neutral-300 text-sm">Channel</span>
+                    <span id="statusChannel" class="font-medium text-neutral-500 text-sm">-</span>
+                </div>
+                <div class="flex items-center justify-between">
+                    <span class="text-neutral-300 text-sm">Peer ID</span>
+                    <span id="statusPeerId" class="font-medium text-neutral-500 text-sm">-</span>
+                </div>
+                <div class="flex items-center justify-between">
+                    <span class="text-neutral-300 text-sm">Peer</span>
+                    <span id="statusPeer" class="font-medium text-neutral-500 text-sm">-</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Connection Info Section -->
+        <div class="p-5 flex-1">
+            <div class="text-xs text-neutral-400 uppercase tracking-wider mb-3 font-semibold">Connection Info</div>
+
+            <div class="bg-neutral-950 border border-neutral-900 rounded p-3 space-y-3">
+                <div class="flex items-center justify-between">
+                    <span class="text-neutral-400 text-sm">Connected</span>
+                    <span id="infoConnectedTime" class="font-medium text-neutral-500 text-sm">-</span>
+                </div>
+                <div class="flex items-center justify-between">
+                    <span class="text-neutral-400 text-sm">Messages Sent</span>
+                    <span id="infoMessagesSent" class="font-medium text-neutral-500 text-sm">0</span>
+                </div>
+                <div class="flex items-center justify-between">
+                    <span class="text-neutral-400 text-sm">Messages Received</span>
+                    <span id="infoMessagesReceived" class="font-medium text-neutral-500 text-sm">0</span>
+                </div>
+                <div class="flex items-center justify-between">
+                    <span class="text-neutral-400 text-sm">Bytes Sent</span>
+                    <span id="infoBytesSent" class="font-medium text-neutral-500 text-sm">0 B</span>
+                </div>
+                <div class="flex items-center justify-between">
+                    <span class="text-neutral-400 text-sm">Bytes Received</span>
+                    <span id="infoBytesReceived" class="font-medium text-neutral-500 text-sm">0 B</span>
+                </div>
+            </div>
+        </div>
+
+    </aside>
+
+    <!-- CENTER: Console -->
+    <main class="flex-1 flex flex-col bg-neutral-950 min-w-0">
+        <!-- Console Header -->
+        <div class="h-10 border-b border-neutral-900 flex items-center justify-between px-5 bg-black">
+            <h2 class="text-xs font-semibold text-neutral-400 uppercase tracking-wider">Console Output</h2>
+            <div class="flex items-center gap-4">
+                <label class="flex items-center gap-1.5 cursor-pointer">
+                    <input id="autoscroll" type="checkbox" checked class="w-3 h-3 accent-white">
+                    <span class="text-xs text-neutral-400">Autoscroll</span>
+                </label>
+                <button id="clearBtn"
+                        class="text-xs text-neutral-400 hover:text-white transition-colors uppercase tracking-wider">
+                    Clear
+                </button>
+            </div>
+        </div>
+
+        <!-- Console Output -->
+        <div id="console" class="flex-1 overflow-y-auto p-5 space-y-1.5 leading-tight select-text">
+        </div>
+    </main>
+
+    <!-- RIGHT SIDEBAR: Send Message -->
+    <aside class="w-[448px] bg-black border-l border-neutral-900 flex flex-col shrink-0"
+           aria-label="Send Message Pannel">
+        <div class="p-5 flex-1 flex flex-col">
+            <div class="text-xs text-neutral-400 uppercase tracking-wider mb-3 font-semibold">Send Message</div>
+
+            <div class="space-y-2.5 flex-1 flex flex-col">
+                <!-- Content Type -->
+                <select id="contentType"
+                        class="w-full px-3 py-2 bg-neutral-950 border border-neutral-900 rounded text-sm focus:outline-none focus:border-neutral-700 cursor-pointer">
+                    <option value="text">Text</option>
+                    <option value="binary">Binary (base64)</option>
+                </select>
+
+                <!-- Message Content -->
+                <textarea id="messageData" placeholder="Type a message... (Enter to send, Shift+Enter for new line)"
+                          spellcheck="false"
+                          class="flex-1 w-full px-3 py-2 bg-neutral-950 border border-neutral-900 rounded text-sm placeholder:text-neutral-500 focus:outline-none focus:border-neutral-700 focus:bg-neutral-900 transition-all resize-none leading-relaxed"></textarea>
+
+                <!-- Send Button -->
+                <button id="sendBtn" disabled
+                        class="w-full px-3 py-2 rounded text-sm font-semibold transition-all bg-white text-black border border-white hover:bg-neutral-200 hover:border-neutral-200 disabled:bg-neutral-800 disabled:text-neutral-500 disabled:border-neutral-800 disabled:cursor-not-allowed">
+                    Send
+                </button>
+            </div>
+        </div>
+    </aside>
+
+</div>
+
+<script>
+    // ==================== State Management ====================
+    let ws = null;
+    let connectionState = {
+        connected: false,
+        channelId: null,
+        peerId: null,
+        peer: null  // { peerId, metadata } or null
+    };
+
+    // Connection statistics
+    let connectionStats = {
+        connectedAt: null,
+        messagesSent: 0,
+        messagesReceived: 0,
+        bytesSent: 0,
+        bytesReceived: 0
+    };
+    let connectionTimer = null;
+
+    // ==================== DOM Elements ====================
+    const elements = {
+        // Connection
+        serverUrl: document.getElementById('serverUrl'),
+        channelId: document.getElementById('channelId'),
+        peerId: document.getElementById('peerId'),
+        secret: document.getElementById('secret'),
+        connectBtn: document.getElementById('connectBtn'),
+
+        // Status
+        statusConnection: document.getElementById('statusConnection'),
+        statusChannel: document.getElementById('statusChannel'),
+        statusPeerId: document.getElementById('statusPeerId'),
+        statusPeer: document.getElementById('statusPeer'),
+
+        // Console
+        console: document.getElementById('console'),
+        autoscroll: document.getElementById('autoscroll'),
+        clearBtn: document.getElementById('clearBtn'),
+
+        // Connection Info
+        infoConnectedTime: document.getElementById('infoConnectedTime'),
+        infoMessagesSent: document.getElementById('infoMessagesSent'),
+        infoMessagesReceived: document.getElementById('infoMessagesReceived'),
+        infoBytesSent: document.getElementById('infoBytesSent'),
+        infoBytesReceived: document.getElementById('infoBytesReceived'),
+
+        // Message
+        contentType: document.getElementById('contentType'),
+        messageData: document.getElementById('messageData'),
+        sendBtn: document.getElementById('sendBtn')
+    };
+
+    // ==================== Console Logging ====================
+    // Log configuration based on protocol message types
+    const logConfig = {
+        // System Messages (server -> client)
+        ready: {badge: 'READY', class: 'badge-ready', dir: 'server'},
+        peer: {badge: 'PEER', class: 'badge-peer', dir: 'server'},
+        error: {badge: 'ERROR', class: 'badge-error', dir: 'server'},
+        shutdown: {badge: 'SHUTDOWN', class: 'badge-shutdown', dir: 'server'},
+
+        // Data Messages (client <-> client)
+        data: {badge: 'DATA', class: 'badge-data', dir: null},
+        ack: {badge: 'ACK', class: 'badge-ack', dir: null},
+
+        // Control Messages
+        control: {badge: 'CONTROL', class: 'badge-control', dir: null},
+
+        // Client local
+        client: {badge: 'CLIENT', class: 'badge-client', dir: null}
+    };
+
+    // ==================== Connection Info Helpers ====================
+    function formatBytes(bytes) {
+        if (bytes === 0) return '0 B';
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return `${parseFloat((bytes / (k ** i)).toFixed(1))} ${sizes[i]}`;
+    }
+
+    function formatDuration(ms) {
+        const seconds = Math.floor(ms / 1000);
+        const minutes = Math.floor(seconds / 60);
+        const hours = Math.floor(minutes / 60);
+
+        if (hours > 0) {
+            return `${hours}h ${minutes % 60}m ${seconds % 60}s`;
+        } else if (minutes > 0) {
+            return `${minutes}m ${seconds % 60}s`;
+        } else {
+            return `${seconds}s`;
+        }
+    }
+
+    function updateConnectionInfo() {
+        if (connectionStats.connectedAt) {
+            const elapsed = Date.now() - connectionStats.connectedAt;
+            elements.infoConnectedTime.textContent = formatDuration(elapsed);
+            elements.infoConnectedTime.classList.remove('text-neutral-500');
+            elements.infoConnectedTime.classList.add('text-white');
+        }
+        elements.infoMessagesSent.textContent = connectionStats.messagesSent;
+        elements.infoMessagesReceived.textContent = connectionStats.messagesReceived;
+        elements.infoBytesSent.textContent = formatBytes(connectionStats.bytesSent);
+        elements.infoBytesReceived.textContent = formatBytes(connectionStats.bytesReceived);
+
+        // Highlight non-zero values
+        if (connectionStats.messagesSent > 0) {
+            elements.infoMessagesSent.classList.remove('text-neutral-500');
+            elements.infoMessagesSent.classList.add('text-white');
+        }
+        if (connectionStats.messagesReceived > 0) {
+            elements.infoMessagesReceived.classList.remove('text-neutral-500');
+            elements.infoMessagesReceived.classList.add('text-white');
+        }
+        if (connectionStats.bytesSent > 0) {
+            elements.infoBytesSent.classList.remove('text-neutral-500');
+            elements.infoBytesSent.classList.add('text-white');
+        }
+        if (connectionStats.bytesReceived > 0) {
+            elements.infoBytesReceived.classList.remove('text-neutral-500');
+            elements.infoBytesReceived.classList.add('text-white');
+        }
+    }
+
+    function resetConnectionInfo() {
+        connectionStats = {
+            connectedAt: null,
+            messagesSent: 0,
+            messagesReceived: 0,
+            bytesSent: 0,
+            bytesReceived: 0
         };
+        if (connectionTimer) {
+            clearInterval(connectionTimer);
+            connectionTimer = null;
+        }
+        elements.infoConnectedTime.textContent = '-';
+        elements.infoConnectedTime.classList.add('text-neutral-500');
+        elements.infoConnectedTime.classList.remove('text-white');
+        elements.infoMessagesSent.textContent = '0';
+        elements.infoMessagesSent.classList.add('text-neutral-500');
+        elements.infoMessagesSent.classList.remove('text-white');
+        elements.infoMessagesReceived.textContent = '0';
+        elements.infoMessagesReceived.classList.add('text-neutral-500');
+        elements.infoMessagesReceived.classList.remove('text-white');
+        elements.infoBytesSent.textContent = '0 B';
+        elements.infoBytesSent.classList.add('text-neutral-500');
+        elements.infoBytesSent.classList.remove('text-white');
+        elements.infoBytesReceived.textContent = '0 B';
+        elements.infoBytesReceived.classList.add('text-neutral-500');
+        elements.infoBytesReceived.classList.remove('text-white');
+    }
 
-        // ==================== DOM Elements ====================
-        const elements = {
-            // Connection
-            serverUrl: document.getElementById('serverUrl'),
-            channel: document.getElementById('channel'),
-            deviceName: document.getElementById('deviceName'),
-            secret: document.getElementById('secret'),
-            connectBtn: document.getElementById('connectBtn'),
+    function log(type, message, direction = null, data = null) {
+        const time = new Date().toLocaleTimeString('en-US', {
+            hour12: false,
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            fractionalSecondDigits: 3
+        });
+        const config = logConfig[type] || logConfig.client;
 
-            // Status
-            statusConnection: document.getElementById('statusConnection'),
-            statusChannel: document.getElementById('statusChannel'),
-            statusDevice: document.getElementById('statusDevice'),
-            statusPartner: document.getElementById('statusPartner'),
+        const entry = document.createElement('div');
+        entry.className = 'hover:bg-neutral-900/50 -mx-2 px-2 py-1 rounded transition-colors';
 
-            // Console
-            console: document.getElementById('console'),
-            autoscroll: document.getElementById('autoscroll'),
-            clearBtn: document.getElementById('clearBtn'),
+        // Direction arrow
+        let dirHtml = '';
+        if (direction === 'in') {
+            dirHtml = '<span class="text-emerald-500 w-4 text-center shrink-0"></span>';
+        } else if (direction === 'out') {
+            dirHtml = '<span class="text-blue-500 w-4 text-center shrink-0"></span>';
+        } else if (config.dir === 'server') {
+            dirHtml = '<span class="text-violet-400 w-4 text-center shrink-0"></span>';
+        } else {
+            dirHtml = '<span class="w-4 shrink-0"></span>';
+        }
 
-            // Message
-            contentType: document.getElementById('contentType'),
-            mimeType: document.getElementById('mimeType'),
-            filename: document.getElementById('filename'),
-            messageData: document.getElementById('messageData'),
-            sendBtn: document.getElementById('sendBtn'),
-            clearMsgBtn: document.getElementById('clearMsgBtn')
-        };
-
-        // ==================== Console Logging ====================
-        function log(type, message, data = null) {
-            const time = new Date().toLocaleTimeString('en-GB', { hour12: false });
-            const entry = document.createElement('div');
-            entry.className = 'hover:bg-neutral-900/50 -mx-2 px-2 py-0.5 rounded transition-colors flex gap-2.5 items-start';
-
-            const colors = {
-                SYS: 'text-neutral-600',
-                INFO: 'text-blue-500',
-                OK: 'text-emerald-500',
-                WARN: 'text-amber-500',
-                ERR: 'text-red-500',
-                RX: 'text-cyan-500',
-                TX: 'text-purple-500'
-            };
-
-            const typeColor = colors[type] || 'text-neutral-500';
-
-            entry.innerHTML = `
-                <span class="text-neutral-500 text-xs shrink-0 select-none pt-0.5">[${time}]</span>
-                <span class="${typeColor} font-bold text-xs w-12 text-right shrink-0 select-none pt-0.5">${type}</span>
-                <span class="text-neutral-400 text-sm break-all leading-relaxed">${message}</span>
+        entry.innerHTML = `
+                <div class="flex items-start gap-2">
+                    <span class="text-neutral-500 text-xs shrink-0 pt-0.5 tabular-nums">[${time}]</span>
+                    ${dirHtml}
+                    <span class="log-badge ${config.class}">${config.badge}</span>
+                    <span class="text-neutral-300 text-sm flex-1">${message}</span>
+                </div>
             `;
 
-            elements.console.appendChild(entry);
-
-            if (data) {
-                const dataDiv = document.createElement('div');
-                dataDiv.className = 'ml-24 text-xs text-neutral-600 bg-neutral-900/30 border border-neutral-900 rounded p-2 mt-1 font-mono overflow-x-auto';
-                dataDiv.textContent = JSON.stringify(data, null, 2);
-                elements.console.appendChild(dataDiv);
-            }
-
-            if (elements.autoscroll.checked) {
-                elements.console.scrollTop = elements.console.scrollHeight;
-            }
+        if (data) {
+            const dataDiv = document.createElement('div');
+            dataDiv.className = 'ml-32 text-xs text-neutral-500 bg-neutral-900/50 border border-neutral-800 rounded p-2 mt-1 font-mono overflow-x-auto';
+            dataDiv.textContent = JSON.stringify(data, null, 2);
+            entry.appendChild(dataDiv);
         }
 
-        function clearConsole() {
-            elements.console.innerHTML = '<div class="text-neutral-500 text-sm">// Console cleared</div>';
+        elements.console.appendChild(entry);
+
+        if (elements.autoscroll.checked) {
+            elements.console.scrollTop = elements.console.scrollHeight;
+        }
+    }
+
+    function clearConsole() {
+        elements.console.innerHTML = '';
+        log('client', 'Console cleared');
+    }
+
+    // ==================== UI Updates ====================
+    function updateConnectionUI(connected) {
+        if (connected) {
+            elements.connectBtn.textContent = 'Disconnect';
+            elements.connectBtn.classList.remove('bg-white', 'text-black', 'border-white', 'hover:bg-neutral-200', 'hover:border-neutral-200');
+            elements.connectBtn.classList.add('bg-red-900/80', 'text-red-100', 'border-red-900/80', 'hover:bg-red-900', 'hover:border-red-900');
+
+            elements.statusConnection.textContent = 'Connected';
+            elements.statusConnection.classList.remove('text-neutral-500');
+            elements.statusConnection.classList.add('text-emerald-500');
+
+            elements.sendBtn.disabled = false;
+        } else {
+            elements.connectBtn.textContent = 'Connect';
+            elements.connectBtn.classList.remove('bg-red-900/80', 'text-red-100', 'border-red-900/80', 'hover:bg-red-900', 'hover:border-red-900');
+            elements.connectBtn.classList.add('bg-white', 'text-black', 'border-white', 'hover:bg-neutral-200', 'hover:border-neutral-200');
+
+            elements.statusConnection.textContent = 'Disconnected';
+            elements.statusConnection.classList.add('text-neutral-500');
+            elements.statusConnection.classList.remove('text-emerald-500');
+
+            elements.statusChannel.textContent = '-';
+            elements.statusChannel.classList.add('text-neutral-500');
+            elements.statusChannel.classList.remove('text-white');
+
+            elements.statusPeerId.textContent = '-';
+            elements.statusPeerId.classList.add('text-neutral-500');
+            elements.statusPeerId.classList.remove('text-white');
+
+            elements.statusPeer.textContent = '-';
+            elements.statusPeer.classList.add('text-neutral-500');
+            elements.statusPeer.classList.remove('text-white');
+
+            elements.sendBtn.disabled = true;
+
+            connectionState = {
+                connected: false,
+                channelId: null,
+                peerId: null,
+                peer: null
+            };
+
+            // Reset connection info
+            resetConnectionInfo();
+        }
+    }
+
+    function updatePeerUI(peer) {
+        if (peer) {
+            elements.statusPeer.textContent = peer.peerId || peer;
+            elements.statusPeer.classList.remove('text-neutral-500', 'text-amber-500');
+            elements.statusPeer.classList.add('text-white');
+        } else if (connectionState.connected) {
+            elements.statusPeer.textContent = 'Waiting...';
+            elements.statusPeer.classList.remove('text-neutral-500', 'text-white');
+            elements.statusPeer.classList.add('text-amber-500');
+        } else {
+            elements.statusPeer.textContent = '-';
+            elements.statusPeer.classList.add('text-neutral-500');
+            elements.statusPeer.classList.remove('text-white', 'text-amber-500');
+        }
+    }
+
+    // ==================== WebSocket Connection ====================
+    function connect() {
+        const serverUrl = elements.serverUrl.value.trim();
+        const secret = elements.secret.value.trim();
+        const channelId = elements.channelId.value.trim();
+        const peerId = elements.peerId.value.trim();
+
+        // Validation
+        if (!serverUrl || !secret || !channelId || !peerId) {
+            log('error', 'All fields are required');
+            return;
         }
 
-        // ==================== UI Updates ====================
-        function updateConnectionUI(connected) {
-            if (connected) {
-                elements.connectBtn.textContent = 'Disconnect';
-                elements.connectBtn.classList.remove('bg-white', 'text-black', 'border-white', 'hover:bg-neutral-200', 'hover:border-neutral-200');
-                elements.connectBtn.classList.add('bg-red-900/80', 'text-red-100', 'border-red-900/80', 'hover:bg-red-900', 'hover:border-red-900');
-
-                elements.statusConnection.textContent = 'Connected';
-                elements.statusConnection.classList.remove('text-neutral-500');
-                elements.statusConnection.classList.add('text-emerald-500');
-
-                elements.sendBtn.disabled = false;
-            } else {
-                elements.connectBtn.textContent = 'Connect';
-                elements.connectBtn.classList.remove('bg-red-900/80', 'text-red-100', 'border-red-900/80', 'hover:bg-red-900', 'hover:border-red-900');
-                elements.connectBtn.classList.add('bg-white', 'text-black', 'border-white', 'hover:bg-neutral-200', 'hover:border-neutral-200');
-
-                elements.statusConnection.textContent = 'Disconnected';
-                elements.statusConnection.classList.add('text-neutral-500');
-                elements.statusConnection.classList.remove('text-emerald-500');
-
-                elements.statusChannel.textContent = '—';
-                elements.statusChannel.classList.add('text-neutral-500');
-                elements.statusChannel.classList.remove('text-white');
-
-                elements.statusDevice.textContent = '—';
-                elements.statusDevice.classList.add('text-neutral-500');
-                elements.statusDevice.classList.remove('text-white');
-
-                elements.statusPartner.textContent = '—';
-                elements.statusPartner.classList.add('text-neutral-500');
-                elements.statusPartner.classList.remove('text-white');
-
-                elements.sendBtn.disabled = true;
-
-                connectionState = {
-                    connected: false,
-                    channel: null,
-                    device: null,
-                    partner: null,
-                    waitingForPartner: false
-                };
-            }
+        if (channelId.length !== 8 || !/^[a-zA-Z0-9]{8}$/.test(channelId)) {
+            log('error', 'Channel ID must be exactly 8 alphanumeric characters');
+            return;
         }
 
-        function updatePartnerUI(partnerName) {
-            if (partnerName) {
-                elements.statusPartner.textContent = partnerName;
-                elements.statusPartner.classList.remove('text-neutral-500');
-                elements.statusPartner.classList.add('text-white');
-            } else if (connectionState.waitingForPartner) {
-                elements.statusPartner.textContent = 'Waiting...';
-                elements.statusPartner.classList.remove('text-neutral-500', 'text-white');
-                elements.statusPartner.classList.add('text-amber-500');
-            } else {
-                elements.statusPartner.textContent = '—';
-                elements.statusPartner.classList.add('text-neutral-500');
-                elements.statusPartner.classList.remove('text-white', 'text-amber-500');
-            }
-        }
+        // Build URL with all params (auth via query params during HTTP upgrade)
+        const url = `${serverUrl}/ws?channelId=${encodeURIComponent(channelId)}&peerId=${encodeURIComponent(peerId)}&secret=${encodeURIComponent(secret)}`;
 
-        // ==================== WebSocket Connection ====================
-        function connect() {
-            const serverUrl = elements.serverUrl.value.trim();
-            const secret = elements.secret.value.trim();
-            const channel = elements.channel.value.trim();
-            const deviceName = elements.deviceName.value.trim();
+        log('client', `Connecting to ${serverUrl}...`);
+        log('client', `Channel: ${channelId} | Peer: ${peerId}`);
 
-            // Validation
-            if (!serverUrl || !secret || !channel || !deviceName) {
-                log('ERR', 'All fields are required');
-                return;
-            }
+        try {
+            ws = new WebSocket(url);
 
-            if (channel.length !== 8 || !/^[a-zA-Z0-9]{8}$/.test(channel)) {
-                log('ERR', 'Channel must be exactly 8 alphanumeric characters');
-                return;
-            }
+            ws.onopen = () => {
+                log('client', 'WebSocket connected, waiting for READY message...');
 
-            // Build URL with channel and deviceName (auth via first message)
-            const url = `${serverUrl}/ws?channel=${encodeURIComponent(channel)}&deviceName=${encodeURIComponent(deviceName)}`;
+                // Store connection info
+                connectionState.channelId = channelId;
+                connectionState.peerId = peerId;
 
-            log('SYS', `Connecting to ${serverUrl}...`);
-            log('INFO', `Channel: ${channel} | Device: ${deviceName}`);
+                elements.statusChannel.textContent = channelId;
+                elements.statusChannel.classList.remove('text-neutral-500');
+                elements.statusChannel.classList.add('text-white');
 
-            try {
-                ws = new WebSocket(url);
+                elements.statusPeerId.textContent = peerId;
+                elements.statusPeerId.classList.remove('text-neutral-500');
+                elements.statusPeerId.classList.add('text-white');
+            };
 
-                ws.onopen = () => {
-                    log('OK', 'WebSocket connection established');
-                    log('SYS', 'Sending auth message...');
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    handleMessage(data);
+                } catch (e) {
+                    log('error', 'Failed to parse message', null, {error: e.message});
+                }
+            };
 
-                    // Send auth message as first message
-                    const authMessage = {
-                        type: 'auth',
-                        secret: secret
-                    };
-                    ws.send(JSON.stringify(authMessage));
-                    log('TX', 'Auth message sent');
+            ws.onerror = (error) => {
+                log('error', `WebSocket error: ${error.type}`);
+            };
 
-                    // Update UI to show connection in progress
-                    connectionState.channel = channel;
-                    connectionState.device = deviceName;
+            ws.onclose = (event) => {
+                const reason = event.reason || 'No reason provided';
 
-                    elements.statusChannel.textContent = channel;
-                    elements.statusChannel.classList.remove('text-neutral-500');
-                    elements.statusChannel.classList.add('text-white');
-
-                    elements.statusDevice.textContent = deviceName;
-                    elements.statusDevice.classList.remove('text-neutral-500');
-                    elements.statusDevice.classList.add('text-white');
-
-                    elements.statusConnection.textContent = 'Authenticating...';
-                    elements.statusConnection.classList.remove('text-neutral-500', 'text-emerald-500');
-                    elements.statusConnection.classList.add('text-amber-500');
-                };
-
-                ws.onmessage = (event) => {
-                    try {
-                        const data = JSON.parse(event.data);
-                        handleMessage(data);
-                    } catch (e) {
-                        log('ERR', 'Failed to parse message', { error: e.message });
-                    }
-                };
-
-                ws.onerror = (error) => {
-                    log('ERR', `WebSocket error: ${error.type}`);
-                };
-
-                ws.onclose = (event) => {
-                    const reason = event.reason || 'No reason provided';
-                    
-                    // Check if we were still authenticating (never received 'connected')
-                    if (!connectionState.connected && connectionState.channel) {
-                        log('ERR', `Authentication failed [${event.code}]: ${reason}`);
-                    } else {
-                        log('WARN', `Connection closed [${event.code}]: ${reason}`);
-                    }
-                    
-                    updateConnectionUI(false);
-                    ws = null;
-                };
-
-            } catch (error) {
-                log('ERR', `Failed to connect: ${error.message}`);
-            }
-        }
-
-        function disconnect() {
-            if (ws) {
-                log('SYS', 'Disconnecting...');
-                ws.close(1000, 'User disconnect');
-            }
-        }
-
-        // ==================== Message Handlers ====================
-        function handleMessage(data) {
-            switch (data.type) {
-                case 'connected':
-                    log('OK', `Authenticated and connected to channel: ${data.channelId}`, data);
-                    connectionState.connected = true;
-                    connectionState.waitingForPartner = data.waitingForPartner;
-                    updateConnectionUI(true);
-                    if (data.waitingForPartner) {
-                        log('INFO', 'Waiting for partner to join...');
-                        updatePartnerUI(null);
-                    }
-                    break;
-
-                case 'partner_connected':
-                    log('OK', `Partner connected: ${data.partnerName}`, data);
-                    connectionState.partner = data.partnerName;
-                    connectionState.waitingForPartner = false;
-                    updatePartnerUI(data.partnerName);
-                    break;
-
-                case 'partner_disconnected':
-                    log('WARN', `Partner disconnected: ${data.partnerName}`, data);
-                    connectionState.partner = null;
-                    connectionState.waitingForPartner = true;
-                    updatePartnerUI(null);
-                    break;
-
-                case 'clipboard': {
-                    log('RX', `Clipboard received: ${data.contentType} (${data.metadata.size} bytes)`, {
-                        contentType: data.contentType,
-                        mimeType: data.metadata.mimeType,
-                        size: data.metadata.size,
-                        filename: data.metadata.filename
-                    });
-
-                    // Send ACK
-                    const ack = {
-                        type: 'clipboard_ack',
-                        timestamp: new Date().toISOString(),
-                        receivedSize: data.metadata.size
-                    };
-                    ws.send(JSON.stringify(ack));
-                    log('TX', 'ACK sent');
-                    break;
+                if (!connectionState.connected && connectionState.channelId) {
+                    log('error', `Connection rejected [${event.code}]: ${reason}`);
+                } else {
+                    log('client', `Connection closed [${event.code}]: ${reason}`);
                 }
 
-                case 'clipboard_ack':
-                    log('RX', `ACK received: ${data.receivedSize} bytes`, data);
-                    break;
+                updateConnectionUI(false);
+                ws = null;
+            };
 
-                case 'server_shutdown':
-                    log('WARN', `Server shutting down: ${data.message}`, data);
-                    log('WARN', 'Connection will close in a few seconds...');
-                    break;
+        } catch (error) {
+            log('error', `Failed to connect: ${error.message}`);
+        }
+    }
 
-                case 'error':
-                    log('ERR', `[${data.code}] ${data.message}`, data);
-                    break;
+    function disconnect() {
+        if (ws) {
+            log('client', 'Disconnecting...');
+            ws.close(1000, 'User disconnect');
+        }
+    }
 
-                default:
-                    log('INFO', `Unknown message type: ${data.type}`, data);
+    // ==================== Message Handlers ====================
+    function handleMessage(msg) {
+        const data = msg.payload || msg;
+        const type = msg.header?.type || msg.type;
+
+        switch (type) {
+            case 'ready':
+                log('ready', `Connected to channel: ${data.channelId}`, null, msg);
+                connectionState.connected = true;
+                updateConnectionUI(true);
+
+                // Start connection timer
+                connectionStats.connectedAt = Date.now();
+                connectionTimer = setInterval(updateConnectionInfo, 1000);
+                updateConnectionInfo();
+
+                if (data.peer) {
+                    connectionState.peer = data.peer;
+                    updatePeerUI(data.peer);
+                    log('client', `Peer already connected: ${data.peer.peerId}`);
+                } else {
+                    log('client', 'Waiting for peer to join...');
+                    updatePeerUI(null);
+                }
+                break;
+
+            case 'peer':
+                if (data.event === 'joined') {
+                    log('peer', `Peer joined: ${data.peerId}`, null, msg);
+                    connectionState.peer = {peerId: data.peerId};
+                    updatePeerUI(connectionState.peer);
+                } else if (data.event === 'left') {
+                    log('peer', `Peer left: ${data.peerId}`, null, msg);
+                    connectionState.peer = null;
+                    updatePeerUI(null);
+                }
+                break;
+
+            case 'data': {
+                const contentType = data.contentType || 'unknown';
+                const size = data.metadata?.size || data.data?.length || 0;
+
+                // Track received stats
+                connectionStats.messagesReceived++;
+                connectionStats.bytesReceived += size;
+                updateConnectionInfo();
+
+                log('data', `Received: ${contentType} (${size} bytes)`, 'in', msg);
+
+                const ack = {
+                    header: {
+                        type: 'ack',
+                        id: crypto.randomUUID(),
+                        timestamp: new Date().toISOString()
+                    },
+                    payload: {
+                        messageId: msg.header?.id,
+                        status: 'success',
+                        metadata: {
+                            receivedSize: size
+                        }
+                    }
+                };
+                ws.send(JSON.stringify(ack));
+                log('ack', 'Sent acknowledgment', 'out');
+                break;
             }
+
+            case 'ack':
+                log('ack', `Received: ${data.status}`, 'in', msg);
+                break;
+
+            case 'shutdown':
+                log('shutdown', `Server shutting down: ${data.message}`, null, msg);
+                if (data.gracePeriod) {
+                    log('shutdown', `Connection will close in ${data.gracePeriod} seconds...`);
+                }
+                break;
+
+            case 'error':
+                log('error', `[${data.code}] ${data.message}`, null, msg);
+                break;
+
+            default:
+                log('client', `Unknown message type: ${type}`, null, msg);
+        }
+    }
+
+    // ==================== Send Message ====================
+    function sendMessage() {
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+            log('error', 'Not connected');
+            return;
         }
 
-        // ==================== Send Message ====================
-        function sendMessage() {
-            if (!ws || ws.readyState !== WebSocket.OPEN) {
-                log('ERR', 'Not connected');
-                return;
-            }
+        const contentType = elements.contentType.value;
+        const data = elements.messageData.value;
 
-            const contentType = elements.contentType.value;
-            const mimeType = elements.mimeType.value.trim();
-            const filename = elements.filename.value.trim();
-            const data = elements.messageData.value;
+        if (!data.trim()) {
+            return;
+        }
 
-            if (!data) {
-                log('ERR', 'Message data is required');
-                return;
-            }
-
-            const message = {
-                type: 'clipboard',
-                timestamp: new Date().toISOString(),
-                contentType: contentType,
+        const isText = contentType === 'text';
+        const messageSize = new Blob([data]).size;
+        const message = {
+            header: {
+                type: 'data',
+                id: crypto.randomUUID(),
+                timestamp: new Date().toISOString()
+            },
+            payload: {
+                contentType: isText ? 'text' : 'binary',
+                data: isText ? data : data,
                 metadata: {
-                    mimeType: mimeType || 'text/plain',
-                    size: new Blob([data]).size,
-                    filename: filename || null
-                },
-                data: data
-            };
-
-            ws.send(JSON.stringify(message));
-            log('TX', `Sent ${contentType} message (${message.metadata.size} bytes)`, {
-                contentType: contentType,
-                mimeType: message.metadata.mimeType,
-                size: message.metadata.size
-            });
-        }
-
-        function clearMessage() {
-            elements.messageData.value = '';
-            elements.filename.value = '';
-            log('SYS', 'Message form cleared');
-        }
-
-        // ==================== Event Listeners ====================
-        elements.connectBtn.addEventListener('click', () => {
-            if (connectionState.connected) {
-                disconnect();
-            } else {
-                connect();
+                    size: messageSize
+                }
             }
-        });
+        };
 
-        elements.clearBtn.addEventListener('click', clearConsole);
-        elements.sendBtn.addEventListener('click', sendMessage);
-        elements.clearMsgBtn.addEventListener('click', clearMessage);
+        ws.send(JSON.stringify(message));
 
-        // Update MIME type based on content type
-        elements.contentType.addEventListener('change', (e) => {
-            const mimeTypes = {
-                'text': 'text/plain',
-                'image': 'image/png',
-                'file': 'application/octet-stream'
-            };
-            elements.mimeType.value = mimeTypes[e.target.value] || 'text/plain';
-        });
+        // Track sent stats
+        connectionStats.messagesSent++;
+        connectionStats.bytesSent += messageSize;
+        updateConnectionInfo();
 
-        // ==================== Initialize ====================
-        log('SYS', 'WSClip Relay Tester initialized');
-        log('INFO', 'Ready to connect (First Message Auth)');
-    </script>
+        log('data', `Sent: ${contentType} (${messageSize} bytes)`, 'out');
+
+        // Clear textarea after sending
+        elements.messageData.value = '';
+    }
+
+    // ==================== Event Listeners ====================
+    elements.connectBtn.addEventListener('click', () => {
+        if (connectionState.connected) {
+            disconnect();
+        } else {
+            connect();
+        }
+    });
+
+    elements.clearBtn.addEventListener('click', clearConsole);
+    elements.sendBtn.addEventListener('click', sendMessage);
+
+    // Send message on Enter (Shift+Enter for new line)
+    elements.messageData.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+        }
+    });
+
+    // ==================== Initialize ====================
+    log('client', 'CRSP Relay Playground initialized');
+    log('client', 'Ready to connect');
+</script>
 </body>
 </html>
