@@ -1,4 +1,4 @@
-import { getLogger } from "@/config/logger";
+import { getLogger } from "@/server/config/logger";
 import { getChannelManager } from "@/server/channel";
 import { getRateLimiter } from "@/server/security";
 

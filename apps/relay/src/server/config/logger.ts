@@ -1,5 +1,5 @@
 import pino from "pino";
-import type { Env } from "@/config/env";
+import type { Env } from "@/server/config/env.ts";
 
 export type Logger = pino.Logger;
 

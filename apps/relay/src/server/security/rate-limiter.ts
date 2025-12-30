@@ -1,4 +1,4 @@
-import { getLogger } from "@/config/logger";
+import { getLogger } from "@/server/config/logger";
 
 interface RateLimitEntry {
     count: number;

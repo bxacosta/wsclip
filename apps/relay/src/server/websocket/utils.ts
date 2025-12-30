@@ -1,4 +1,4 @@
-import { getLogger } from "@/config/logger";
+import { getLogger } from "@/server/config/logger";
 import type { TypedWebSocket } from "@/server/channel";
 
 export function validateChannelId(channel: string): boolean {

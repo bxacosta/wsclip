@@ -1,5 +1,5 @@
 import type { Server } from "bun";
-import type { Env } from "@/config/env";
+import type { Env } from "@/server/config/env";
 import { createReadyMessage, parseMessage, serializeMessage } from "@/protocol/messages";
 import { MessageType } from "@/protocol/types/enums";
 import { validateAckPayload, validateControlPayload, validateDataPayload, validateHeader } from "@/protocol/validation";

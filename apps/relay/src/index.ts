@@ -1,5 +1,5 @@
-import { loadEnv } from "@/config/env";
-import { flushLogger, getLogger, initLogger } from "@/config/logger";
+import { loadEnv } from "@/server/config/env";
+import { flushLogger, getLogger, initLogger } from "@/server/config/logger";
 import { PROTOCOL_CONFIG } from "@/protocol/constants";
 import { createShutdownMessage, serializeMessage } from "@/protocol/messages";
 import { startServer } from "@/server";

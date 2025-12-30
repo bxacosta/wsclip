@@ -1,4 +1,4 @@
-import { getLogger } from "@/config/logger";
+import { getLogger } from "@/server/config/logger";
 import { ERROR_CATALOG } from "@/protocol/errors";
 import { createPeerMessage, serializeMessage } from "@/protocol/messages";
 import type { ErrorCode } from "@/protocol/types";

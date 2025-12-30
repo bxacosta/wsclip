@@ -1,5 +1,5 @@
-import type { Env } from "@/config/env";
-import { getLogger } from "@/config/logger";
+import type { Env } from "@/server/config/env";
+import { getLogger } from "@/server/config/logger";
 import { ERROR_CATALOG } from "@/protocol/errors";
 import type { ErrorCode } from "@/protocol/types";
 import { handleHealthCheck, handleNotFound, handleStats } from "@/server/http/routes";
