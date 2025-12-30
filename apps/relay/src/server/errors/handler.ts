@@ -1,10 +1,9 @@
 import type { Logger } from "pino";
-import { ERROR_CATALOG } from "@/protocol/errors";
+import { ERROR_CATALOG, ERROR_MESSAGES } from "@/protocol/errors";
 import { createErrorMessage, serializeMessage } from "@/protocol/messages";
 import type { ErrorCode } from "@/protocol/types";
 import type { TypedWebSocket } from "@/server/channel/types";
 
-// Lazy import to avoid circular dependency
 let getChannelManagerFn: (() => { incrementError: (code: ErrorCode) => void }) | null = null;
 
 export function setChannelManagerGetter(getter: () => { incrementError: (code: ErrorCode) => void }): void {
@@ -18,17 +17,10 @@ export function handleProtocolError(
     logger?: Logger,
 ): void {
     const definition = ERROR_CATALOG[errorCode];
-    const message = customMessage || definition.defaultMessage;
+    const message = customMessage || ERROR_MESSAGES[errorCode];
 
     if (logger) {
-        logger.warn(
-            {
-                errorCode,
-                closeCode: definition.closeCode,
-                recoverable: definition.recoverable,
-            },
-            message,
-        );
+        logger.warn({ errorCode, code: definition.code, recoverable: definition.recoverable }, message);
     }
 
     if (getChannelManagerFn) {
@@ -39,6 +31,6 @@ export function handleProtocolError(
     ws.send(serializeMessage(errorMsg));
 
     if (!definition.recoverable) {
-        ws.close(definition.closeCode, message);
+        ws.close(definition.code, message);
     }
 }

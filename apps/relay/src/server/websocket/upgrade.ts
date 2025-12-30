@@ -1,5 +1,5 @@
 import type { Server } from "bun";
-import { ERROR_CATALOG } from "@/protocol/errors";
+import { ERROR_MESSAGES } from "@/protocol/errors";
 import type { ErrorCode } from "@/protocol/types";
 import { getChannelManager, type WebSocketData } from "@/server/channel";
 import { getLogger } from "@/server/config/logger";
@@ -24,7 +24,7 @@ export function handleUpgrade(req: Request, server: Server<object>, serverSecret
         return {
             success: false,
             errorCode: "RATE_LIMIT_EXCEEDED",
-            errorMessage: ERROR_CATALOG.RATE_LIMIT_EXCEEDED.defaultMessage,
+            errorMessage: ERROR_MESSAGES.RATE_LIMIT_EXCEEDED,
         };
     }
 
@@ -38,7 +38,7 @@ export function handleUpgrade(req: Request, server: Server<object>, serverSecret
         return {
             success: false,
             errorCode: "INVALID_CHANNEL",
-            errorMessage: ERROR_CATALOG.INVALID_CHANNEL.defaultMessage,
+            errorMessage: ERROR_MESSAGES.INVALID_CHANNEL,
         };
     }
 
@@ -48,11 +48,10 @@ export function handleUpgrade(req: Request, server: Server<object>, serverSecret
         return {
             success: false,
             errorCode: "INVALID_PEER_ID",
-            errorMessage: ERROR_CATALOG.INVALID_PEER_ID.defaultMessage,
+            errorMessage: ERROR_MESSAGES.INVALID_PEER_ID,
         };
     }
 
-    // Dual authentication: Bearer header or query param secret
     const authHeader = req.headers.get("Authorization");
     let secret = "";
 
@@ -68,7 +67,7 @@ export function handleUpgrade(req: Request, server: Server<object>, serverSecret
         return {
             success: false,
             errorCode: "INVALID_SECRET",
-            errorMessage: ERROR_CATALOG.INVALID_SECRET.defaultMessage,
+            errorMessage: ERROR_MESSAGES.INVALID_SECRET,
         };
     }
 

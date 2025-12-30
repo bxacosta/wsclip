@@ -1,4 +1,4 @@
-import { ERROR_CATALOG } from "@/protocol/errors";
+import { ERROR_MESSAGES } from "@/protocol/errors";
 import { createPeerMessage, serializeMessage } from "@/protocol/messages";
 import type { ErrorCode } from "@/protocol/types";
 import { PeerEventType } from "@/protocol/types/enums";
@@ -89,7 +89,7 @@ class ChannelManager {
                 success: false,
                 error: {
                     code: "MAX_CHANNELS_REACHED",
-                    message: ERROR_CATALOG.MAX_CHANNELS_REACHED.defaultMessage,
+                    message: ERROR_MESSAGES.MAX_CHANNELS_REACHED,
                 },
             };
         }
@@ -108,7 +108,7 @@ class ChannelManager {
                 success: false,
                 error: {
                     code: "CHANNEL_FULL",
-                    message: ERROR_CATALOG.CHANNEL_FULL.defaultMessage,
+                    message: ERROR_MESSAGES.CHANNEL_FULL,
                 },
             };
         }
@@ -120,7 +120,7 @@ class ChannelManager {
                 success: false,
                 error: {
                     code: "DUPLICATE_PEER_ID",
-                    message: ERROR_CATALOG.DUPLICATE_PEER_ID.defaultMessage,
+                    message: ERROR_MESSAGES.DUPLICATE_PEER_ID,
                 },
             };
         }

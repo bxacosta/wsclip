@@ -24,13 +24,13 @@ export function startServer(env: Env) {
 
                 const errorDef = result.errorCode ? ERROR_CATALOG[result.errorCode as ErrorCode] : null;
                 const httpStatus = errorDef?.httpStatus ?? 400;
-                const wsCloseCode = errorDef?.closeCode ?? 4000;
+                const wsCode = errorDef?.code ?? 4000;
 
                 return Response.json(
                     {
                         error: result.errorCode || "UPGRADE_FAILED",
                         message: result.errorMessage || "WebSocket upgrade failed",
-                        wsCloseCode,
+                        wsCode,
                     },
                     { status: httpStatus },
                 );

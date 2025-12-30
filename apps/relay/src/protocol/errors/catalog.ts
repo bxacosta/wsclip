@@ -2,86 +2,90 @@ import type { ErrorCode } from "@/protocol/types/enums";
 import type { ErrorDefinition } from "./types";
 
 /**
- * Error catalog with all error definitions.
+ * Error catalog with all protocol error definitions.
  *
- * Close code ranges:
- * - 4000-4099: Message errors (recoverable)
- * - 4100-4199: Authentication errors (fatal, HTTP upgrade only)
- * - 5000-5099: State/limit errors (fatal)
- * - 5900-5999: Internal server errors (fatal)
+ * Code ranges (all within valid WebSocket range 4000-4999):
+ * - 4000-4099: Message errors (recoverable, post-connection)
+ * - 4100-4199: Validation errors (fatal)
+ * - 4200-4299: State/limit errors (fatal)
+ * - 4900-4999: Internal errors (fatal)
  */
 export const ERROR_CATALOG: Record<ErrorCode, ErrorDefinition> = {
-    // Message errors (recoverable)
+    // Message errors (recoverable, post-connection only)
     INVALID_MESSAGE: {
-        closeCode: 4001,
+        code: 4001,
         httpStatus: 400,
         recoverable: true,
-        defaultMessage: "Invalid message format or structure",
     },
     MESSAGE_TOO_LARGE: {
-        closeCode: 4002,
+        code: 4002,
         httpStatus: 400,
         recoverable: true,
-        defaultMessage: "Message exceeds maximum size limit",
     },
     NO_PEER_CONNECTED: {
-        closeCode: 4003,
+        code: 4003,
         httpStatus: 400,
         recoverable: true,
-        defaultMessage: "No peer connected to relay message",
     },
 
-    // Authentication errors (fatal, occur during HTTP upgrade)
+    // Validation errors (fatal)
     INVALID_SECRET: {
-        closeCode: 4101,
+        code: 4100,
         httpStatus: 401,
         recoverable: false,
-        defaultMessage: "Invalid authentication secret",
     },
     INVALID_CHANNEL: {
-        closeCode: 4102,
+        code: 4101,
         httpStatus: 400,
         recoverable: false,
-        defaultMessage: "Channel ID must be exactly 8 alphanumeric characters",
     },
     INVALID_PEER_ID: {
-        closeCode: 4103,
+        code: 4102,
         httpStatus: 400,
         recoverable: false,
-        defaultMessage: "Peer identifier cannot be empty",
     },
 
     // State/limit errors (fatal)
     CHANNEL_FULL: {
-        closeCode: 5001,
+        code: 4200,
         httpStatus: 503,
         recoverable: false,
-        defaultMessage: "Channel is full (maximum 2 peers)",
     },
     DUPLICATE_PEER_ID: {
-        closeCode: 5002,
+        code: 4201,
         httpStatus: 409,
         recoverable: false,
-        defaultMessage: "Peer identifier already exists in this channel",
     },
     RATE_LIMIT_EXCEEDED: {
-        closeCode: 5003,
+        code: 4202,
         httpStatus: 429,
         recoverable: false,
-        defaultMessage: "Rate limit exceeded, too many requests",
     },
     MAX_CHANNELS_REACHED: {
-        closeCode: 5004,
+        code: 4203,
         httpStatus: 503,
         recoverable: false,
-        defaultMessage: "Server has reached maximum number of active channels",
     },
 
     // Internal errors (fatal)
     INTERNAL_ERROR: {
-        closeCode: 5900,
+        code: 4900,
         httpStatus: 500,
         recoverable: false,
-        defaultMessage: "Internal server error",
     },
+} as const;
+
+/** Human-readable error messages for each error code */
+export const ERROR_MESSAGES: Record<ErrorCode, string> = {
+    INVALID_MESSAGE: "Invalid message format or structure",
+    MESSAGE_TOO_LARGE: "Message exceeds maximum size limit",
+    NO_PEER_CONNECTED: "No peer connected to relay message",
+    INVALID_SECRET: "Invalid authentication secret",
+    INVALID_CHANNEL: "Channel ID must be exactly 8 alphanumeric characters",
+    INVALID_PEER_ID: "Peer ID is required",
+    CHANNEL_FULL: "Channel is full (maximum 2 peers)",
+    DUPLICATE_PEER_ID: "Peer ID already exists in this channel",
+    RATE_LIMIT_EXCEEDED: "Rate limit exceeded",
+    MAX_CHANNELS_REACHED: "Maximum number of channels reached",
+    INTERNAL_ERROR: "Internal server error",
 } as const;
