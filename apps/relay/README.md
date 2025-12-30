@@ -1,98 +1,136 @@
-# Relay
+# Relay Server
 
-WebSocket relay server that enables real-time bidirectional communication between two devices through channel-based
-pairing.
+WebSocket relay server implementing the Content Relay Sync Protocol (CRSP) for stateless peer-to-peer content
+synchronization.
 
 ## Features
 
-- Channel-based pairing with 8-character alphanumeric identifiers
-- Maximum 2 devices per channel
-- WebSocket compression (permessage-deflate)
-- Rate limiting and backpressure handling
-- Graceful shutdown with client notification
-- Health check and statistics endpoints
+- Stateless relay architecture with transparent message routing
+- Channel-based pairing using 8-character alphanumeric identifiers
+- Strict two-peer limit per channel for secure point-to-point communication
+- Dual authentication support (HTTP header and query parameter)
+- Rate limiting and connection backpressure handling
+- HTTP endpoints for health checks and statistics
 
-## Requirements
+## Quick Start
+
+### Prerequisites
 
 - Bun 1.3 or higher
 
-## Installation
+### Installation
 
 ```bash
 bun install
 ```
 
-## Configuration
+### Configuration
 
-| Variable             | Description                              | Default     |
-|----------------------|------------------------------------------|-------------|
-| SERVER_SECRET        | Authentication token (required)          | -           |
-| PORT                 | Server port                              | 3000        |
-| MAX_MESSAGE_SIZE     | Maximum payload size in bytes            | 104857600   |
-| LOG_LEVEL            | Logging level (debug, info, warn, error) | info        |
-| NODE_ENV             | Environment (development, production)    | development |
-| IDLE_TIMEOUT         | WebSocket idle timeout in seconds        | 60          |
-| RATE_LIMIT_MAX       | Maximum connections per window           | 10          |
-| RATE_LIMIT_WINDOW_MS | Rate limit window in milliseconds        | 60000       |
+Copy the environment template and configure the server secret:
 
-## Usage
+```bash
+cp .env.example .env
+```
 
-### Development
+Edit `.env` and set the required `SERVER_SECRET` variable. See `.env.example` for all available configuration options.
+
+### Running the Server
+
+**Development mode:**
 
 ```bash
 bun run dev
 ```
 
-### Production
+**Production mode:**
 
 ```bash
 bun run build
 bun run start
 ```
 
-### Docker
+**Docker deployment:**
 
 ```bash
 docker compose up -d
 ```
 
-## API
+## Protocol
 
-### WebSocket
+### CRSP (Content Relay Sync Protocol)
+
+CRSP is a WebSocket-based protocol designed for content synchronization through a relay server. It defines a
+hierarchical message structure with strict header validation and flexible payload extensions.
+
+**Connection Format:**
 
 ```
-ws://localhost:3000/ws?secret=<SECRET>&channel=<CHANNEL_ID>&deviceName=<DEVICE_NAME>
+ws://host:port/ws?channelId=<CHANNEL_ID>&peerId=<PEER_ID>&secret=<SECRET>
 ```
 
-Parameters:
+or with HTTP header authentication:
 
-- secret: Server authentication token
-- channel: 8-character alphanumeric channel identifier
-- deviceName: Unique device name within the channel
+```
+ws://host:port/ws?channelId=<CHANNEL_ID>&peerId=<PEER_ID>
+Authorization: Bearer <SECRET>
+```
 
-### HTTP Endpoints
+**Parameters:**
 
-| Endpoint | Method | Description       |
-|----------|--------|-------------------|
-| /health  | GET    | Health check      |
-| /stats   | GET    | Server statistics |
+- `channelId`: Exactly 8 alphanumeric characters
+- `peerId`: Non-empty peer identifier (unique within channel)
+- `secret`: Authentication secret (query parameter or header)
 
-## Scripts
+**Message Categories:**
 
-| Command       | Description                         |
-|---------------|-------------------------------------|
-| bun run dev   | Development server with auto-reload |
-| bun run build | Compile TypeScript                  |
-| bun run start | Run production build                |
-| bun run check | Run linter                          |
-| bun run fix   | Auto-fix linting issues             |
-| bun run play  | Start playground on port 4000       |
+- **Control Messages**: Connection management and custom commands (`control`)
+- **Data Messages**: Content exchange (`data`) and acknowledgments (`ack`)
+- **System Messages**: Server notifications (`ready`, `peer`, `error`, `shutdown`)
 
-## Playground
+For complete protocol specification, message formats, and integration examples, see `docs/PROTOCOL.md` and
+`docs/INTEGRATION.md`.
 
-A web-based testing interface is available to interact with the server manually. Requires the server to be running.
+## HTTP Endpoints
+
+| Endpoint | Method | Authentication | Description                   |
+|----------|--------|----------------|-------------------------------|
+| /health  | GET    | None           | Health check status           |
+| /stats   | GET    | Bearer token   | Server statistics and metrics |
+
+## Development
+
+### Available Scripts
+
+| Command           | Description                         |
+|-------------------|-------------------------------------|
+| bun run dev       | Development server with auto-reload |
+| bun run build     | Compile TypeScript                  |
+| bun run start     | Run production build                |
+| bun run check     | Run Biome linter checks             |
+| bun run fix       | Auto-fix linting issues             |
+| bun run typecheck | TypeScript type checking            |
+| bun run play      | Start playground server (port 4000) |
+
+### Playground
+
+A web-based client interface is available for testing:
 
 ```bash
-bun run dev      # Terminal 1: Start server
-bun run play     # Terminal 2: Open http://localhost:4000
+# Terminal 1: Start relay server
+bun run dev
+
+# Terminal 2: Start playground
+bun run play
+```
+
+Open `http://localhost:4000` and connect multiple clients to test the relay functionality.
+
+## Deployment
+
+### Docker
+
+The project includes a `Dockerfile` and `compose.yaml` for containerized deployment:
+
+```bash
+docker compose up -d
 ```
