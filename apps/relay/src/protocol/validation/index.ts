@@ -30,7 +30,7 @@ function validate<T>(data: unknown, schema: ZodType<T>, errorMessage: string): V
     };
 }
 
-export const validateMessage: ValidationFunction<BaseMessage> = (data: unknown): ValidationResult<BaseMessage> => {
+export const validateBaseMessage: ValidationFunction<BaseMessage> = (data: unknown): ValidationResult<BaseMessage> => {
     return validate(data, baseMessageSchema, "Invalid message");
 };
 

@@ -1,4 +1,4 @@
-import type { CRSPMessage, PeerMessage, ReadyMessage } from "@/protocol";
+import type { CRSPMessage, PeerMessage } from "@/protocol";
 import { createPeerMessage, createReadyMessage, serializeMessage } from "@/protocol/messages";
 import { ErrorCatalog, ErrorCode, PeerEventType } from "@/protocol/types/enums";
 import type { AppWebSocket, WebSocketData } from "@/server/core";
@@ -86,8 +86,8 @@ export class ChannelManager {
         ws.subscribe(channelId);
         logger.info({ totalClients: channel.connections.size }, "Client joined channel");
 
-        const [existingConnections] = this.getOtherConnections(channelId, client.id);
-        const readyMessage: ReadyMessage = createReadyMessage(client.id, channelId, existingConnections?.client || null);
+        const existingConnection = this.getOtherConnections(channelId, client.id).at(0)?.client ?? null;
+        const readyMessage = createReadyMessage(client.id, channelId, existingConnection);
         ws.send(serializeMessage(readyMessage));
 
         if (channel.connections.size > 1) {
@@ -143,7 +143,7 @@ export class ChannelManager {
     }
 
     hasOtherPeer(ws: AppWebSocket): boolean {
-        return this.getOtherConnections(ws.data.channelId, ws.data.client.id) !== null;
+        return this.getOtherConnections(ws.data.channelId, ws.data.client.id).length > 0;
     }
 
     relayToClients(ws: AppWebSocket, message: CRSPMessage): Array<RelayResult> {
@@ -199,7 +199,7 @@ export class ChannelManager {
                     connection.ws.close(code, reason);
                     closedCount++;
                 } catch (error) {
-                    this.getLogger(connection.ws.data).error({ error }, "Connection close failed");
+                    this.getLogger(connection.ws.data).error({ err: error }, "Connection close failed");
                 }
             }
         }
