@@ -11,12 +11,11 @@ import {
 import type { AppServer } from "@/server.ts";
 
 export function handleUpgrade(request: Request, server: AppServer): Response | undefined {
-    const { logger, config, channelManager, rateLimiter } = getContext();
+    const { logger, config, rateLimiter } = getContext();
 
     const ip = server.requestIP(request)?.address ?? "unknown";
     if (!rateLimiter.checkLimit(ip)) {
         logger.warn({ ip }, "Connection rejected due to rate limit");
-        channelManager.incrementError(ErrorCode.RATE_LIMIT_EXCEEDED);
         return buildResponseError(ErrorCode.RATE_LIMIT_EXCEEDED);
     }
 
@@ -24,19 +23,16 @@ export function handleUpgrade(request: Request, server: AppServer): Response | u
 
     if (!validateChannelId(channelId)) {
         logger.warn({ channelId }, "Invalid channel ID");
-        channelManager.incrementError(ErrorCode.INVALID_CHANNEL_ID);
         return buildResponseError(ErrorCode.INVALID_CHANNEL_ID);
     }
 
     if (!validatePeerId(peerId)) {
         logger.warn({ peerId }, "Invalid peer ID");
-        channelManager.incrementError(ErrorCode.INVALID_PEER_ID);
         return buildResponseError(ErrorCode.INVALID_PEER_ID);
     }
 
     if (secret !== config.serverSecret) {
         logger.warn({ secret }, "Invalid secret");
-        channelManager.incrementError(ErrorCode.INVALID_SECRET);
         return buildResponseError(ErrorCode.INVALID_SECRET);
     }
 

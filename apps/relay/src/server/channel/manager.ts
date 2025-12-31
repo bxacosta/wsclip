@@ -17,19 +17,6 @@ export class ChannelManager {
     private readonly config: ChannelManagerConfig;
     private readonly logger: Logger;
     private readonly channels = new Map<string, Channel>();
-    private readonly errors: Record<ErrorCode, number> = {
-        INVALID_SECRET: 0,
-        INVALID_CHANNEL_ID: 0,
-        INVALID_PEER_ID: 0,
-        CHANNEL_FULL: 0,
-        DUPLICATE_PEER_ID: 0,
-        INVALID_MESSAGE: 0,
-        MESSAGE_TOO_LARGE: 0,
-        NO_PEER_CONNECTED: 0,
-        RATE_LIMIT_EXCEEDED: 0,
-        MAX_CHANNELS_REACHED: 0,
-        INTERNAL_ERROR: 0,
-    };
 
     private messagesRelayed = 0;
     private bytesTransferred = 0;
@@ -37,10 +24,6 @@ export class ChannelManager {
     constructor(deps: ChannelManagerDependencies) {
         this.config = deps.config;
         this.logger = deps.logger;
-    }
-
-    incrementError(code: ErrorCode): void {
-        this.errors[code]++;
     }
 
     addConnection(ws: AppWebSocket): ActionResult {
@@ -237,7 +220,6 @@ export class ChannelManager {
             bytesTransferred: this.bytesTransferred,
             oldestConnectionAge: this.calculateAge(oldestConnection),
             newestConnectionAge: this.calculateAge(newestConnection),
-            errors: { ...this.errors },
         };
     }
 

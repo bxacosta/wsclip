@@ -30,7 +30,6 @@ export interface ChannelStats {
     bytesTransferred: number;
     oldestConnectionAge: number;
     newestConnectionAge: number;
-    errors: Record<ErrorCode, number>;
 }
 
 export type ActionResult = { success: true } | { success: false; errorCode: ErrorCode };
