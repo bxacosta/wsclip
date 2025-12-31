@@ -1,25 +1,25 @@
-import type { Logger } from "pino";
-import type { ControlMessage } from "@/protocol/types";
-import { getChannelManager, type TypedWebSocket } from "@/server/channel";
-import { handleProtocolError } from "@/server/errors";
+import { type ControlMessage, ErrorCode } from "@/protocol/types";
+import { type AppWebSocket, getContext } from "@/server/core";
+import type { Logger } from "@/server/core/logger.ts";
+import { handleWebSocketError } from "@/server/errors";
 
-export function handleControlMessage(ws: TypedWebSocket, controlMsg: ControlMessage, logger: Logger) {
-    const channelManager = getChannelManager();
-    const hasPeer = channelManager.hasPeer(ws.data.channelId, ws.data.peerId);
+export function handleControlMessage(ws: AppWebSocket, message: ControlMessage, logger: Logger) {
+    const { channelManager } = getContext();
+    const hasPeer = channelManager.hasOtherPeer(ws);
 
     if (!hasPeer) {
         logger.debug("No peer connected for CONTROL relay");
-        handleProtocolError(ws, "NO_PEER_CONNECTED", undefined, logger);
+        handleWebSocketError(ws, ErrorCode.NO_PEER_CONNECTED);
         return;
     }
 
     logger.debug(
         {
-            messageId: controlMsg.header.id,
-            command: controlMsg.payload.command,
+            messageId: message.header.id,
+            command: message.payload.command,
         },
         "Relaying CONTROL message",
     );
 
-    channelManager.relayToPeer(ws.data.channelId, ws.data.peerId, JSON.stringify(controlMsg));
+    channelManager.relayToClients(ws, message);
 }

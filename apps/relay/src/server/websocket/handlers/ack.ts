@@ -1,10 +1,10 @@
 import type { Logger } from "pino";
 import type { AckMessage } from "@/protocol/types";
-import { getChannelManager, type TypedWebSocket } from "@/server/channel";
+import { type AppWebSocket, getContext } from "@/server/core";
 
-export function handleAckMessage(ws: TypedWebSocket, ackMsg: AckMessage, logger: Logger) {
-    const channelManager = getChannelManager();
-    const hasPeer = channelManager.hasPeer(ws.data.channelId, ws.data.peerId);
+export function handleAckMessage(ws: AppWebSocket, message: AckMessage, logger: Logger) {
+    const { channelManager } = getContext();
+    const hasPeer = channelManager.hasOtherPeer(ws);
 
     if (!hasPeer) {
         logger.debug("No peer connected for ACK relay");
@@ -13,12 +13,12 @@ export function handleAckMessage(ws: TypedWebSocket, ackMsg: AckMessage, logger:
 
     logger.debug(
         {
-            ackId: ackMsg.header.id,
-            messageId: ackMsg.payload.messageId,
-            status: ackMsg.payload.status,
+            ackId: message.header.id,
+            messageId: message.payload.messageId,
+            status: message.payload.status,
         },
         "Relaying ACK message",
     );
 
-    channelManager.relayToPeer(ws.data.channelId, ws.data.peerId, JSON.stringify(ackMsg));
+    channelManager.relayToClients(ws, message);
 }

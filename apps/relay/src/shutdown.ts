@@ -1,19 +1,18 @@
-import type { Server } from "bun";
-import { getChannelManager } from "@/server/channel";
-import { flushLogger, getLogger } from "@/server/config";
-import { getRateLimiter } from "@/server/security";
+import { getContext } from "@/server/core";
+import { flushLogger } from "@/server/core/logger.ts";
+import type { AppServer } from "@/server.ts";
 
 let isShuttingDown = false;
 
-async function performShutdown(signal: string, server: Server<object>): Promise<void> {
-    const logger = getLogger();
+async function performShutdown(signal: string, server: AppServer): Promise<void> {
+    const { logger, channelManager, rateLimiter } = getContext();
     logger.info({ signal }, "Shutdown initiated");
 
     try {
-        getChannelManager().closeAllConnections(1001, "Server shutting down");
-        getRateLimiter().stop();
+        channelManager.close();
+        rateLimiter.stop();
         await server.stop();
-        await flushLogger();
+        await flushLogger(logger);
         process.exit(0);
     } catch (err) {
         logger.error({ err }, "Shutdown error");
@@ -21,7 +20,7 @@ async function performShutdown(signal: string, server: Server<object>): Promise<
     }
 }
 
-export function gracefulShutdown(signal: string, server: Server<object>): void {
+export function gracefulShutdown(signal: string, server: AppServer): void {
     if (isShuttingDown) return;
     isShuttingDown = true;
 
@@ -33,7 +32,7 @@ export function gracefulShutdown(signal: string, server: Server<object>): void {
     });
 }
 
-export function setupShutdownHandlers(server: Server<object>): void {
+export function setupShutdownHandlers(server: AppServer): void {
     const handler = (signal: string) => () => gracefulShutdown(signal, server);
 
     process.on("SIGINT", handler("SIGINT"));

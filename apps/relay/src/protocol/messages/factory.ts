@@ -1,22 +1,14 @@
 import { randomUUID } from "node:crypto";
-import type { ErrorCode, ErrorMessage, Metadata, PeerEventType, PeerMessage, ReadyMessage } from "@/protocol/types";
+import { getTimestamp } from "@/protocol/messages/utils.ts";
+import type { ErrorCode, ErrorMessage, Peer, PeerEventType, PeerMessage, ReadyMessage } from "@/protocol/types";
 import { MessageType } from "@/protocol/types/enums";
 
-export function createTimestamp(): string {
-    return new Date().toISOString();
-}
-
-interface PeerInfo {
-    peerId: string;
-    metadata?: Metadata;
-}
-
-export function createReadyMessage(peerId: string, channelId: string, peer: PeerInfo | null): ReadyMessage {
+export function createReadyMessage(peerId: string, channelId: string, peer: Peer | null): ReadyMessage {
     return {
         header: {
             type: MessageType.READY,
             id: randomUUID(),
-            timestamp: createTimestamp(),
+            timestamp: getTimestamp(),
         },
         payload: {
             peerId,
@@ -26,17 +18,16 @@ export function createReadyMessage(peerId: string, channelId: string, peer: Peer
     };
 }
 
-export function createPeerMessage(peerId: string, event: PeerEventType, metadata?: Metadata): PeerMessage {
+export function createPeerMessage(peerId: string, event: PeerEventType): PeerMessage {
     return {
         header: {
             type: MessageType.PEER,
             id: randomUUID(),
-            timestamp: createTimestamp(),
+            timestamp: getTimestamp(),
         },
         payload: {
             peerId,
             event,
-            ...(metadata && { metadata }),
         },
     };
 }
@@ -51,7 +42,7 @@ export function createErrorMessage(
         header: {
             type: MessageType.ERROR,
             id: randomUUID(),
-            timestamp: createTimestamp(),
+            timestamp: getTimestamp(),
         },
         payload: {
             code,

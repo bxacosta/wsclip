@@ -1,30 +1,30 @@
 import type { Logger } from "pino";
-import type { DataMessage } from "@/protocol/types";
-import { getChannelManager, type TypedWebSocket } from "@/server/channel";
-import { handleProtocolError } from "@/server/errors";
+import { type DataMessage, ErrorCode } from "@/protocol/types";
+import { type AppWebSocket, getContext } from "@/server/core";
+import { handleWebSocketError } from "@/server/errors";
 
-export function handleDataMessage(ws: TypedWebSocket, dataMsg: DataMessage, logger: Logger) {
-    const channelManager = getChannelManager();
-    const hasPeer = channelManager.hasPeer(ws.data.channelId, ws.data.peerId);
+export function handleDataMessage(ws: AppWebSocket, message: DataMessage, logger: Logger) {
+    const { channelManager } = getContext();
+    const hasPeer = channelManager.hasOtherPeer(ws);
 
     if (!hasPeer) {
         logger.debug("No peer connected");
-        handleProtocolError(ws, "NO_PEER_CONNECTED", undefined, logger);
+        handleWebSocketError(ws, ErrorCode.NO_PEER_CONNECTED);
         return;
     }
 
     logger.debug(
         {
-            messageId: dataMsg.header.id,
-            contentType: dataMsg.payload.contentType,
+            messageId: message.header.id,
+            contentType: message.payload.contentType,
         },
         "Relaying DATA message",
     );
 
-    const relayed = channelManager.relayToPeer(ws.data.channelId, ws.data.peerId, JSON.stringify(dataMsg));
+    const relayed = channelManager.relayToClients(ws, message);
 
     if (!relayed) {
         logger.warn("Failed to relay DATA message");
-        handleProtocolError(ws, "NO_PEER_CONNECTED", "Peer disconnected", logger);
+        handleWebSocketError(ws, ErrorCode.NO_PEER_CONNECTED, "Peer disconnected");
     }
 }

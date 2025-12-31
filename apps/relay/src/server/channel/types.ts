@@ -1,24 +1,40 @@
-import type { ServerWebSocket } from "bun";
-import type { Metadata } from "@/protocol/types";
+import type { ErrorCode, Peer } from "@/protocol/types";
+import type { AppWebSocket } from "@/server/core";
+import type { Logger } from "@/server/core/logger.ts";
 
-export interface WebSocketData {
-    peerId: string;
-    channelId: string;
-    connectedAt: Date;
-    metadata?: Metadata;
-}
-
-export type TypedWebSocket = ServerWebSocket<WebSocketData>;
-
-export interface Peer {
-    peerId: string;
-    ws: TypedWebSocket;
-    connectedAt: Date;
-    metadata?: Metadata;
+export interface Connection {
+    ws: AppWebSocket;
+    client: Peer;
 }
 
 export interface Channel {
     channelId: string;
-    peers: Map<string, Peer>;
+    connections: Map<string, Connection>;
     createdAt: Date;
 }
+
+export type ChannelManagerConfig = Readonly<{
+    maxChannels: number;
+    connectionsPerChannel: number;
+}>;
+export type ChannelManagerDependencies = Readonly<{
+    config: ChannelManagerConfig;
+    logger: Logger;
+}>;
+
+export interface ChannelStats {
+    activeChannels: number;
+    maxChannels: number;
+    activeConnections: number;
+    messagesRelayed: number;
+    bytesTransferred: number;
+    oldestConnectionAge: number;
+    newestConnectionAge: number;
+    errors: Record<ErrorCode, number>;
+}
+
+export type ActionResult = { success: true } | { success: false; errorCode: ErrorCode };
+
+export type RelayResult = {
+    clientId: string;
+} & ActionResult;

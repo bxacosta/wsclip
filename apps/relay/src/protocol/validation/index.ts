@@ -1,110 +1,44 @@
-import type { AckMessage, ControlMessage, DataMessage, MessageHeader } from "@/protocol/messages/schemas.ts";
+import type { ZodType } from "zod";
+import type { AckMessage, BaseMessage, ControlMessage, DataMessage } from "@/protocol";
 import {
     ackMessageSchema,
+    baseMessageSchema,
     controlMessageSchema,
     dataMessageSchema,
-    headerSchema,
 } from "@/protocol/messages/schemas.ts";
-import type { ErrorCode } from "@/protocol/types/enums";
+import { ErrorCode } from "@/protocol/types/enums";
 
-export interface ValidationResult<T> {
-    valid: boolean;
-    data?: T;
-    error?: {
-        code: ErrorCode;
-        message: string;
-    };
-}
+export type ValidationResult<T> =
+    | { valid: true; data: T }
+    | { valid: false; error: { code: ErrorCode; message: string } };
 
-export function validateHeader(data: unknown): ValidationResult<MessageHeader> {
-    // Extract header from message object
-    const message = data as { header?: unknown };
+export type ValidationFunction<T> = (data: unknown) => ValidationResult<T>;
 
-    if (!message.header) {
-        return {
-            valid: false,
-            error: {
-                code: "INVALID_MESSAGE",
-                message: "Missing message header",
-            },
-        };
-    }
+function validate<T>(data: unknown, schema: ZodType<T>, errorMessage: string): ValidationResult<T> {
+    const result = schema.safeParse(data);
 
-    const result = headerSchema.safeParse(message.header);
-
-    if (!result.success) {
-        const firstIssue = result.error.issues[0];
-        return {
-            valid: false,
-            error: {
-                code: "INVALID_MESSAGE",
-                message: firstIssue?.message || "Invalid message header",
-            },
-        };
+    if (result.success) {
+        return { valid: true, data: result.data };
     }
 
     return {
-        valid: true,
-        data: result.data,
+        valid: false,
+        error: {
+            code: ErrorCode.INVALID_MESSAGE,
+            message: result.error.issues[0]?.message || errorMessage,
+        },
     };
 }
 
-export function validateControlPayload(data: unknown): ValidationResult<ControlMessage> {
-    const result = controlMessageSchema.safeParse(data);
+export const validateMessage: ValidationFunction<BaseMessage> = (data: unknown): ValidationResult<BaseMessage> => {
+    return validate(data, baseMessageSchema, "Invalid message");
+};
 
-    if (!result.success) {
-        const firstIssue = result.error.issues[0];
-        return {
-            valid: false,
-            error: {
-                code: "INVALID_MESSAGE",
-                message: firstIssue?.message || "Invalid CONTROL message",
-            },
-        };
-    }
+export const validateControlPayload: ValidationFunction<ControlMessage> = (data): ValidationResult<ControlMessage> =>
+    validate(data, controlMessageSchema, "Invalid CONTROL message");
 
-    return {
-        valid: true,
-        data: result.data,
-    };
-}
+export const validateDataPayload: ValidationFunction<DataMessage> = (data): ValidationResult<DataMessage> =>
+    validate(data, dataMessageSchema, "Invalid DATA message");
 
-export function validateDataPayload(data: unknown): ValidationResult<DataMessage> {
-    const result = dataMessageSchema.safeParse(data);
-
-    if (!result.success) {
-        const firstIssue = result.error.issues[0];
-        return {
-            valid: false,
-            error: {
-                code: "INVALID_MESSAGE",
-                message: firstIssue?.message || "Invalid DATA message",
-            },
-        };
-    }
-
-    return {
-        valid: true,
-        data: result.data,
-    };
-}
-
-export function validateAckPayload(data: unknown): ValidationResult<AckMessage> {
-    const result = ackMessageSchema.safeParse(data);
-
-    if (!result.success) {
-        const firstIssue = result.error.issues[0];
-        return {
-            valid: false,
-            error: {
-                code: "INVALID_MESSAGE",
-                message: firstIssue?.message || "Invalid ACK message",
-            },
-        };
-    }
-
-    return {
-        valid: true,
-        data: result.data,
-    };
-}
+export const validateAckPayload: ValidationFunction<AckMessage> = (data): ValidationResult<AckMessage> =>
+    validate(data, ackMessageSchema, "Invalid ACK message");

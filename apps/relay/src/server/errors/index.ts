@@ -1,1 +1,1 @@
-export { handleProtocolError, setChannelManagerGetter } from "./handler";
+export { handleWebSocketError } from "./handler";

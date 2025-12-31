@@ -1,32 +1,25 @@
-import { ERROR_MESSAGES } from "@/protocol/errors";
-import { createPeerMessage, serializeMessage } from "@/protocol/messages";
-import type { ErrorCode } from "@/protocol/types";
-import { PeerEventType } from "@/protocol/types/enums";
-import { getLogger } from "@/server/config";
-import type { Channel, Peer, TypedWebSocket } from "./types";
+import type { CRSPMessage, PeerMessage, ReadyMessage } from "@/protocol";
+import { createPeerMessage, createReadyMessage, serializeMessage } from "@/protocol/messages";
+import { ErrorCatalog, ErrorCode, PeerEventType } from "@/protocol/types/enums";
+import type { AppWebSocket, WebSocketData } from "@/server/core";
+import type { Logger } from "@/server/core/logger.ts";
+import type {
+    ActionResult,
+    Channel,
+    ChannelManagerConfig,
+    ChannelManagerDependencies,
+    ChannelStats,
+    Connection,
+    RelayResult,
+} from "./types";
 
-export interface ChannelManagerConfig {
-    readonly maxChannels: number;
-    readonly peersPerChannel: number;
-}
-
-export interface AddPeerResult {
-    success: boolean;
-    error?: {
-        code: ErrorCode;
-        message: string;
-    };
-}
-
-class ChannelManager {
+export class ChannelManager {
     private readonly config: ChannelManagerConfig;
-    private channels: Map<string, Channel> = new Map();
-    private messagesRelayed = 0;
-    private bytesTransferred = 0;
-
-    private errors: Record<ErrorCode, number> = {
+    private readonly logger: Logger;
+    private readonly channels = new Map<string, Channel>();
+    private readonly errors: Record<ErrorCode, number> = {
         INVALID_SECRET: 0,
-        INVALID_CHANNEL: 0,
+        INVALID_CHANNEL_ID: 0,
         INVALID_PEER_ID: 0,
         CHANNEL_FULL: 0,
         DUPLICATE_PEER_ID: 0,
@@ -38,329 +31,200 @@ class ChannelManager {
         INTERNAL_ERROR: 0,
     };
 
-    constructor(config: ChannelManagerConfig) {
-        this.config = config;
+    private messagesRelayed = 0;
+    private bytesTransferred = 0;
+
+    constructor(deps: ChannelManagerDependencies) {
+        this.config = deps.config;
+        this.logger = deps.logger;
     }
 
     incrementError(code: ErrorCode): void {
         this.errors[code]++;
     }
 
-    getErrorMetrics(): Record<ErrorCode, number> {
-        return { ...this.errors };
-    }
+    addConnection(ws: AppWebSocket): ActionResult {
+        const logger = this.getLogger(ws.data);
 
-    private getOrCreateChannel(channelId: string): Channel | null {
-        const logger = getLogger();
+        const { channelId, client } = ws.data;
         let channel = this.channels.get(channelId);
 
         if (!channel) {
             if (this.channels.size >= this.config.maxChannels) {
                 logger.warn(
                     {
-                        channelId,
                         currentChannels: this.channels.size,
                         maxChannels: this.config.maxChannels,
                     },
-                    "Maximum channels reached",
+                    ErrorCatalog[ErrorCode.MAX_CHANNELS_REACHED].message,
                 );
-                return null;
+
+                return { success: false, errorCode: ErrorCode.MAX_CHANNELS_REACHED };
             }
 
             channel = {
                 channelId,
-                peers: new Map(),
                 createdAt: new Date(),
+                connections: new Map(),
             };
 
             this.channels.set(channelId, channel);
-            logger.info({ channelId, totalChannels: this.channels.size }, "Channel created");
+            logger.info({ totalChannels: this.channels.size }, "Channel created");
         }
 
-        return channel;
-    }
-
-    addPeer(channelId: string, peerId: string, ws: TypedWebSocket): AddPeerResult {
-        const logger = getLogger();
-        const channel = this.getOrCreateChannel(channelId);
-
-        if (!channel) {
-            return {
-                success: false,
-                error: {
-                    code: "MAX_CHANNELS_REACHED",
-                    message: ERROR_MESSAGES.MAX_CHANNELS_REACHED,
-                },
-            };
+        if (channel.connections.size >= this.config.connectionsPerChannel) {
+            logger.warn({ currentConnections: channel.connections.size }, ErrorCatalog[ErrorCode.CHANNEL_FULL].message);
+            return { success: false, errorCode: ErrorCode.CHANNEL_FULL };
         }
 
-        if (channel.peers.size >= this.config.peersPerChannel) {
-            logger.warn(
-                {
-                    channelId,
-                    peerId,
-                    currentPeers: channel.peers.size,
-                },
-                "Channel full attempt",
-            );
-
-            return {
-                success: false,
-                error: {
-                    code: "CHANNEL_FULL",
-                    message: ERROR_MESSAGES.CHANNEL_FULL,
-                },
-            };
+        if (channel.connections.has(client.id)) {
+            logger.warn(ErrorCatalog[ErrorCode.DUPLICATE_PEER_ID].message);
+            return { success: false, errorCode: ErrorCode.DUPLICATE_PEER_ID };
         }
 
-        if (channel.peers.has(peerId)) {
-            logger.warn({ channelId, peerId }, "Duplicate peer ID attempt");
-
-            return {
-                success: false,
-                error: {
-                    code: "DUPLICATE_PEER_ID",
-                    message: ERROR_MESSAGES.DUPLICATE_PEER_ID,
-                },
-            };
-        }
-
-        const peer: Peer = {
-            peerId,
-            ws,
-            connectedAt: new Date(),
-            metadata: ws.data.metadata,
-        };
-
-        channel.peers.set(peerId, peer);
+        channel.connections.set(client.id, { ws, client });
         ws.subscribe(channelId);
+        logger.info({ totalClients: channel.connections.size }, "Client joined channel");
 
-        logger.info(
-            {
-                channelId,
-                peerId,
-                totalPeers: channel.peers.size,
-            },
-            "Peer joined channel",
-        );
+        const [existingConnections] = this.getOtherConnections(channelId, client.id);
+        const readyMessage: ReadyMessage = createReadyMessage(client.id, channelId, existingConnections?.client || null);
+        ws.send(serializeMessage(readyMessage));
 
-        if (channel.peers.size === 2) {
-            this.notifyPeerConnected(channelId, peerId);
+        if (channel.connections.size > 1) {
+            this.notifyClientEvent(ws.data, PeerEventType.JOINED);
         }
 
         return { success: true };
     }
 
-    removePeer(channelId: string, peerId: string, ws: TypedWebSocket): void {
-        const logger = getLogger();
+    removeConnection(ws: AppWebSocket): void {
+        const logger = this.getLogger(ws.data);
+
+        const { channelId, client } = ws.data;
         const channel = this.channels.get(channelId);
 
-        if (!channel) {
+        if (!channel) return;
+
+        const connection = channel.connections.get(client.id);
+        if (!connection || connection.ws !== ws) {
+            logger.debug("Skipping remove connection, ws does not match with registered connection");
             return;
         }
 
-        const peer = channel.peers.get(peerId);
+        connection.ws.unsubscribe(channelId);
+        channel.connections.delete(client.id);
 
-        // Only remove if the websocket matches the registered peer
-        // This prevents removing a legitimate peer when a duplicate connection attempt closes
-        if (!peer || peer.ws !== ws) {
-            logger.debug({ channelId, peerId }, "Skipping removePeer: ws does not match registered peer");
-            return;
+        logger.info({ remainingConnections: channel.connections.size }, "Client left the channel");
+
+        if (channel.connections.size > 0) {
+            this.notifyClientEvent(ws.data, PeerEventType.LEFT);
         }
 
-        peer.ws.unsubscribe(channelId);
-        channel.peers.delete(peerId);
-
-        logger.info(
-            {
-                channelId,
-                peerId,
-                remainingPeers: channel.peers.size,
-            },
-            "Peer left channel",
-        );
-
-        if (channel.peers.size === 1) {
-            this.notifyPeerDisconnected(channelId, peerId);
-        }
-
-        if (channel.peers.size === 0) {
+        if (channel.connections.size === 0) {
             this.channels.delete(channelId);
-            logger.info({ channelId }, "Channel destroyed");
+            logger.info("Channel destroyed");
         }
     }
 
-    getPeer(channelId: string, peerId: string): Peer | null {
+    getOtherConnections(channelId: string, clientId: string): Array<Connection> {
         const channel = this.channels.get(channelId);
 
-        if (!channel) {
-            return null;
-        }
+        if (!channel) return [];
 
-        for (const [name, peer] of channel.peers) {
-            if (name !== peerId) {
-                return peer;
+        const connections = [];
+
+        for (const [id, connection] of channel.connections) {
+            if (id !== clientId) {
+                connections.push(connection);
             }
         }
 
-        return null;
+        return connections;
     }
 
-    hasPeer(channelId: string, peerId: string): boolean {
-        return this.getPeer(channelId, peerId) !== null;
+    hasOtherPeer(ws: AppWebSocket): boolean {
+        return this.getOtherConnections(ws.data.channelId, ws.data.client.id) !== null;
     }
 
-    private notifyPeerConnected(channelId: string, newPeerId: string): void {
-        const logger = getLogger();
-        const channel = this.channels.get(channelId);
+    relayToClients(ws: AppWebSocket, message: CRSPMessage): Array<RelayResult> {
+        const logger = this.getLogger(ws.data);
+        const { channelId, client } = ws.data;
 
-        if (!channel) {
-            return;
+        const connections = this.getOtherConnections(channelId, client.id);
+
+        if (!connections?.length) {
+            logger.debug("No connections available for relay");
+            return [];
         }
 
-        const newPeer = channel.peers.get(newPeerId);
-        if (!newPeer) {
-            return;
-        }
+        const serializedMessage = serializeMessage(message);
+        const messageSize = Buffer.byteLength(serializedMessage, "utf8");
 
-        for (const [name, peer] of channel.peers) {
-            if (name !== newPeerId) {
-                const metadata = {
-                    connectedAt: newPeer.connectedAt.toISOString(),
-                    ...newPeer.metadata,
+        return connections.map(connection => {
+            const result = connection.ws.send(serializedMessage);
+
+            if (result === 0) {
+                logger.error({ to: connection.client.id }, "Message dropped, connection issue");
+                return {
+                    success: false,
+                    clientId: connection.client.id,
+                    errorCode: ErrorCode.NO_PEER_CONNECTED,
                 };
-                const message = createPeerMessage(newPeerId, PeerEventType.JOINED, metadata);
-                peer.ws.send(serializeMessage(message));
-
-                logger.debug(
-                    {
-                        channelId,
-                        to: name,
-                        peer: newPeerId,
-                    },
-                    "Peer joined notification sent",
-                );
             }
-        }
-    }
 
-    private notifyPeerDisconnected(channelId: string, disconnectedPeerId: string): void {
-        const logger = getLogger();
-        const channel = this.channels.get(channelId);
+            this.messagesRelayed++;
+            this.bytesTransferred += messageSize;
 
-        if (!channel) {
-            return;
-        }
-
-        for (const [name, peer] of channel.peers) {
-            if (name !== disconnectedPeerId) {
-                const metadata = { reason: "connection_closed" };
-                const message = createPeerMessage(disconnectedPeerId, PeerEventType.LEFT, metadata);
-                peer.ws.send(serializeMessage(message));
-
-                logger.debug(
-                    {
-                        channelId,
-                        to: name,
-                        peer: disconnectedPeerId,
-                    },
-                    "Peer left notification sent",
-                );
-            }
-        }
-    }
-
-    relayToPeer(channelId: string, senderName: string, message: string): boolean {
-        const logger = getLogger();
-        const peer = this.getPeer(channelId, senderName);
-
-        if (!peer) {
-            logger.debug({ channelId, senderName }, "No peer available for relay");
-            return false;
-        }
-
-        const result = peer.ws.send(message);
-
-        if (result === -1) {
-            logger.warn(
+            logger.debug(
                 {
-                    channelId,
-                    from: senderName,
-                    to: peer.peerId,
-                    sizeBytes: message.length,
+                    to: connection.client.id,
+                    sizeBytes: messageSize,
+                    status: result > 0 ? "sent" : "queued",
                 },
-                "Backpressure detected, message queued by Bun",
+                "Message relayed to peer",
             );
-        } else if (result === 0) {
-            logger.error(
-                {
-                    channelId,
-                    from: senderName,
-                    to: peer.peerId,
-                },
-                "Message dropped, connection issue",
-            );
-            return false;
-        }
 
-        this.messagesRelayed++;
-        this.bytesTransferred += Buffer.byteLength(message, "utf8");
-
-        logger.debug(
-            {
-                channelId,
-                from: senderName,
-                to: peer.peerId,
-                sizeBytes: message.length,
-                bytesSent: result > 0 ? result : "queued",
-            },
-            "Message relayed to peer",
-        );
-
-        return true;
+            return { success: true, clientId: connection.client.id };
+        });
     }
 
-    closeAllConnections(code: number, reason: string): number {
-        const logger = getLogger();
+    close(): number {
+        const code = 1001;
+        const reason = "Server shutting down";
         let closedCount = 0;
 
         for (const channel of this.channels.values()) {
-            for (const peer of channel.peers.values()) {
+            for (const connection of channel.connections.values()) {
                 try {
-                    peer.ws.close(code, reason);
+                    connection.ws.close(code, reason);
                     closedCount++;
                 } catch (error) {
-                    logger.error(
-                        {
-                            err: error,
-                            peerId: peer.peerId,
-                            channelId: channel.channelId,
-                        },
-                        "Connection close failed",
-                    );
+                    this.getLogger(connection.ws.data).error({ error }, "Connection close failed");
                 }
             }
         }
 
-        logger.info({ closedCount, code, reason }, "All connections closed");
+        this.logger.info({ closedCount, code, reason }, "All connections closed");
         return closedCount;
     }
 
-    getStats() {
+    getStats(): ChannelStats {
         let totalPeers = 0;
         let oldestConnection: Date | null = null;
         let newestConnection: Date | null = null;
 
         for (const channel of this.channels.values()) {
-            for (const peer of channel.peers.values()) {
+            for (const connection of channel.connections.values()) {
                 totalPeers++;
 
-                if (!oldestConnection || peer.connectedAt < oldestConnection) {
-                    oldestConnection = peer.connectedAt;
+                const connectedAt = new Date(connection.client.connectedAt);
+
+                if (!oldestConnection || connectedAt < oldestConnection) {
+                    oldestConnection = connectedAt;
                 }
 
-                if (!newestConnection || peer.connectedAt > newestConnection) {
-                    newestConnection = peer.connectedAt;
+                if (!newestConnection || connectedAt > newestConnection) {
+                    newestConnection = connectedAt;
                 }
             }
         }
@@ -371,32 +235,41 @@ class ChannelManager {
             activeConnections: totalPeers,
             messagesRelayed: this.messagesRelayed,
             bytesTransferred: this.bytesTransferred,
-            oldestConnectionAge: oldestConnection ? Math.floor((Date.now() - oldestConnection.getTime()) / 1000) : 0,
-            newestConnectionAge: newestConnection ? Math.floor((Date.now() - newestConnection.getTime()) / 1000) : 0,
-            errors: this.getErrorMetrics(),
+            oldestConnectionAge: this.calculateAge(oldestConnection),
+            newestConnectionAge: this.calculateAge(newestConnection),
+            errors: { ...this.errors },
         };
     }
-}
 
-// Singleton instance
-let instance: ChannelManager | null = null;
+    private notifyClientEvent(data: WebSocketData, eventType: PeerEventType): void {
+        const channel = this.channels.get(data.channelId);
+        if (!channel) return;
 
-export function initChannelManager(config: ChannelManagerConfig): ChannelManager {
-    if (instance) {
-        throw new Error("ChannelManager already initialized");
+        const message: PeerMessage = createPeerMessage(data.client.id, eventType);
+        const serialized = serializeMessage(message);
+
+        for (const [id, peer] of channel.connections) {
+            if (id !== data.client.id) {
+                peer.ws.send(serialized);
+                this.getLogger(data).debug({ to: id }, `Peer ${eventType} notification sent`);
+            }
+        }
     }
-    instance = new ChannelManager(config);
-    return instance;
-}
 
-export function getChannelManager(): ChannelManager {
-    if (!instance) {
-        throw new Error("ChannelManager not initialized. Call initChannelManager() first.");
+    private calculateAge(date: Date | null): number {
+        if (!date) return 0;
+        return Math.floor((Date.now() - date.getTime()) / 1000);
     }
-    return instance;
+
+    private getLogger(data: WebSocketData) {
+        return this.logger.child({
+            context: "websocket",
+            channelId: data.channelId,
+            connectionId: data.client.id,
+        });
+    }
 }
 
-/** Resets the singleton. Only for testing. */
-export function resetChannelManager(): void {
-    instance = null;
+export function createChannelManager(deps: ChannelManagerDependencies): ChannelManager {
+    return new ChannelManager(deps);
 }
