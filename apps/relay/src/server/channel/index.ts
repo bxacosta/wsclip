@@ -1,2 +1,2 @@
 export * from "./manager";
-export type {Channel, Connection} from "./types";
+export type { Channel, Connection } from "./types";

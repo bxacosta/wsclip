@@ -406,7 +406,7 @@
 
     function updatePeerUI(peer) {
         if (peer) {
-            setElementState(dom.statusPeer, peer.peerId || peer, 'text-white');
+            setElementState(dom.statusPeer, peer.id || peer.peerId || peer, 'text-white');
         } else if (state.connected) {
             setElementState(dom.statusPeer, 'Waiting...', 'text-amber-500');
         } else {
@@ -481,7 +481,7 @@
             if (payload.peer) {
                 state.peer = payload.peer;
                 updatePeerUI(payload.peer);
-                log('client', `Peer already connected: ${payload.peer.peerId}`);
+                log('client', `Peer already connected: ${payload.peer.id}`);
             } else {
                 log('client', 'Waiting for peer to join...');
                 updatePeerUI(null);

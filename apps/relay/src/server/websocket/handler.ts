@@ -1,10 +1,11 @@
 import type { WebSocketHandler } from "bun";
+import { parseMessage } from "@/protocol/messages";
 import { ErrorCode, MessageType } from "@/protocol/types/enums";
 import {
     validateAckPayload,
+    validateBaseMessage,
     validateControlPayload,
     validateDataPayload,
-    validateMessage,
 } from "@/protocol/validation";
 import { type AppWebSocket, getContext, type WebSocketData } from "@/server/core";
 import { handleWebSocketError } from "@/server/errors";
@@ -59,7 +60,9 @@ export function createWebSocketHandler(): WebSocketHandler<WebSocketData> {
                 return;
             }
 
-            const baseMessage = validateMessage(rawMessage);
+            const baseMessage = validateBaseMessage(parseMessage(rawMessage));
+
+            console.log(baseMessage);
             if (!baseMessage.valid) {
                 logger.warn({ error: baseMessage.error }, "Invalid message header");
                 handleWebSocketError(ws, baseMessage.error.code, baseMessage.error.message);
@@ -71,17 +74,17 @@ export function createWebSocketHandler(): WebSocketHandler<WebSocketData> {
             switch (msgType) {
                 case MessageType.DATA: {
                     const dataHandler = withValidation(validateDataPayload, handleDataMessage);
-                    dataHandler(ws, rawMessage, logger);
+                    dataHandler(ws, baseMessage.data, logger);
                     break;
                 }
                 case MessageType.ACK: {
                     const ackHandler = withValidation(validateAckPayload, handleAckMessage);
-                    ackHandler(ws, rawMessage, logger);
+                    ackHandler(ws, baseMessage.data, logger);
                     break;
                 }
                 case MessageType.CONTROL: {
                     const controlHandler = withValidation(validateControlPayload, handleControlMessage);
-                    controlHandler(ws, rawMessage, logger);
+                    controlHandler(ws, baseMessage.data, logger);
                     break;
                 }
                 default: {

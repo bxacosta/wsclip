@@ -87,7 +87,11 @@ export class ChannelManager {
         logger.info({ totalClients: channel.connections.size }, "Client joined channel");
 
         const [existingConnections] = this.getOtherConnections(channelId, client.id);
-        const readyMessage: ReadyMessage = createReadyMessage(client.id, channelId, existingConnections?.client || null);
+        const readyMessage: ReadyMessage = createReadyMessage(
+            client.id,
+            channelId,
+            existingConnections?.client || null,
+        );
         ws.send(serializeMessage(readyMessage));
 
         if (channel.connections.size > 1) {
