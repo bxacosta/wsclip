@@ -1,6 +1,6 @@
-# CRSP Protocol Specification v1.0
+# CRSP Protocol Specification
 
-Content Relay Sync Protocol - A structured WebSocket protocol for peer-to-peer content synchronization through a
+Content Relay Sync Protocol (CRSP). A structured WebSocket protocol for peer-to-peer content synchronization through a
 stateless relay server.
 
 ---
@@ -18,7 +18,6 @@ reliably exchange content while maintaining flexibility for specific implementat
 - Clipboard synchronization between devices
 - Peer-to-peer file transfer with relay mediation
 - Binary or text content exchange
-- Application state synchronization
 - Any content exchange scenario requiring relay
 
 ### 1.3 Design Principles
@@ -27,7 +26,7 @@ reliably exchange content while maintaining flexibility for specific implementat
 2. **Minimal Validation**: Server validates critical structure, client validates semantics
 3. **Controlled Extensibility**: Strict core fields, flexible extension areas
 4. **Transparency**: Server relays without modifying client payload
-5. **Simplicity**: Only essentials, avoid over-engineering
+5. **Simplicity**: Only essentials, avoid overengineering
 
 ---
 
@@ -35,12 +34,10 @@ reliably exchange content while maintaining flexibility for specific implementat
 
 ### 2.1 Communication Model
 
-```
-┌─────────────┐         ┌─────────────┐         ┌─────────────┐
-│  Client A   │◄───────►│   Relay     │◄───────►│  Client B   │
-│             │         │   Server    │         │             │
-│  (Sender)   │         │ (Stateless) │         │ (Receiver)  │
-└─────────────┘         └─────────────┘         └─────────────┘
+```mermaid
+graph LR
+    A["Client A"] <--> R["Relay Server <br/> (Stateless)"]
+    R <--> B["Client B"]
 ```
 
 **Characteristics**:
@@ -50,21 +47,7 @@ reliably exchange content while maintaining flexibility for specific implementat
 - Transparent relay server (does not modify data messages)
 - No message persistence
 
-### 2.2 Protocol Layers
-
-```
-┌─────────────────────────────────────┐
-│      Client Application             │  ← Synchronization logic
-├─────────────────────────────────────┤
-│     CRSP Protocol Layer             │  ← Message structure
-├─────────────────────────────────────┤
-│        WebSocket Layer              │  ← Reliable transport
-├─────────────────────────────────────┤
-│          TCP/TLS Layer              │  ← Network
-└─────────────────────────────────────┘
-```
-
-### 2.3 Message Categories
+### 2.2 Message Categories
 
 The protocol defines three main categories:
 
@@ -103,7 +86,7 @@ interface MessageHeader {
 }
 
 type MessageType =
-// Control Messages (client ↔ client via relay)
+        // Control Messages (client ↔ client via relay)
         | "control"           // Generic control command
 
         // Data Messages (client ↔ client via relay)
@@ -113,8 +96,7 @@ type MessageType =
         // System Messages (server → client)
         | "ready"             // Connection confirmation
         | "peer"              // Peer event (joined/left)
-        | "error"             // Server error
-        | "shutdown";         // Server shutting down
+        | "error";            // Server error
 ```
 
 **Header Validation Rules**:
@@ -123,7 +105,7 @@ type MessageType =
 - `type`: Must be a valid MessageType enum value
 - `id`: Must be valid UUID v4
 - `timestamp`: Must be valid ISO 8601
-- No additional fields permitted in header
+- No additional fields are permitted in the header
 
 ### 3.3 Payload Structure (Variable)
 
@@ -135,7 +117,7 @@ The payload contains message-specific content. Structure varies by message type 
 
 ### 4.1 Control Messages
 
-#### 4.1.1 CONTROL Message (Client ↔ Client)
+#### 4.1.1 CONTROL Message (Client to Client)
 
 **Purpose**: Generic and extensible control message for commands between clients.
 
@@ -160,20 +142,14 @@ The payload contains message-specific content. Structure varies by message type 
 
 **Payload Fields**:
 
-- `command` (string): REQUIRED - Command identifier
-- `metadata` (object | null): OPTIONAL - Flexible parameters for the command
+- `command` (string): REQUIRED – Command identifier
+- `metadata` (object | null): OPTIONAL – Flexible parameters for the command
 
 **Validation**:
 
 - Header: Strict validation
 - Payload: Only validates `command` exists as string
 - `metadata`: Complete passthrough - server does not validate content
-
-**Suggested Commands** (non-exhaustive, clients can define custom):
-
-- `sync_request`: Request synchronization
-- `pause_sync`: Temporarily pause synchronization
-- `resume_sync`: Resume synchronization
 
 **Server Behavior**:
 
@@ -185,7 +161,7 @@ The payload contains message-specific content. Structure varies by message type 
 
 ### 4.2 Data Messages
 
-#### 4.2.1 DATA Message (Client ↔ Client)
+#### 4.2.1 DATA Message (Client to Client)
 
 **Purpose**: Transmit content (text or binary) between clients.
 
@@ -314,6 +290,7 @@ server-generated.
 **Purpose**: Confirm successful authentication and provide channel state including peer information.
 
 **Structure**:
+
 ```json
 {
   "header": {
@@ -324,7 +301,11 @@ server-generated.
   "payload": {
     "peerId": "laptop-work",
     "channelId": "abc12345",
-    "peer": null
+    "peer": {
+      "id": "laptop-home",
+      "address": "192.168.10.1",
+      "connectedAt": "2025-12-24T10:30:00.000Z"
+    }
   }
 }
 ```
@@ -348,7 +329,7 @@ server-generated.
   },
   "payload": {
     "peerId": "phone-android",
-    "event": "joined",
+    "event": "joined"
   }
 }
 ```
@@ -404,13 +385,13 @@ implementation-specific, but the categories are defined by the protocol:
 
 - `INVALID_MESSAGE`: Invalid message format or structure
 - `MESSAGE_TOO_LARGE`: Message exceeds configured size limit
-- `NO_PEER_CONNECTED`: No peer available to receive message
+- `NO_PEER_CONNECTED`: No peer available to receive the message
 
 **Authentication Errors** (always fatal):
 
-- `INVALID_SECRET`: Incorrect authentication secret
-- `INVALID_CHANNEL`: Invalid channel identifier format
-- `INVALID_PEER_ID`: Invalid peer identifier format or content
+- `INVALID_SECRET`: Invalid authentication secret
+- `INVALID_CHANNEL_ID`: Invalid channel identifier
+- `INVALID_PEER_ID`: Invalid peer identifier
 
 **State/Limit Errors** (always fatal):
 
@@ -428,29 +409,6 @@ implementation-specific, but the categories are defined by the protocol:
 - Message errors: Recoverable - connection remains open, a client can retry
 - Authentication, state/limit, and internal errors: Fatal - server closes connection after sending error message
 
-#### 4.3.4 SHUTDOWN Message (Server → Client)
-
-**Purpose**: Notify that the server is shutting down.
-
-**Structure**:
-```json
-{
-  "header": {
-    "type": "shutdown",
-    "id": "server-gen-uuid",
-    "timestamp": "2025-12-24T10:40:00.000Z"
-  },
-  "payload": {
-    "message": "Server is shutting down for maintenance",
-    "gracePeriod": 5
-  }
-}
-```
-
-**Payload Fields**:
-- `message` (string): REQUIRED - Shutdown message
-- `gracePeriod` (number): OPTIONAL - Seconds until forced close
-
 ---
 
 ## 5. Communication Flow
@@ -466,7 +424,7 @@ implementation-specific, but the categories are defined by the protocol:
    Query parameter fallback is provided for browser WebSocket clients.
 
    Authentication is validated during HTTP handshake. If invalid:
-   - HTTP 400 (INVALID_CHANNEL, INVALID_PEER_ID, INVALID_MESSAGE)
+   - HTTP 400 (INVALID_CHANNEL_ID, INVALID_PEER_ID, INVALID_MESSAGE)
    - HTTP 401 (INVALID_SECRET)
    - HTTP 409 (DUPLICATE_PEER_ID)
    - HTTP 429 (RATE_LIMIT_EXCEEDED)
@@ -489,7 +447,7 @@ implementation-specific, but the categories are defined by the protocol:
 5. Server → Client B: READY message (includes existing peer info)
    {
      "header": { "type": "ready", ... },
-     "payload": { "peer": { "peerId": "laptop", ... }, ... }
+     "payload": { "peer": { "id": "laptop", ... }, ... }
    }
 
 6. Server → Client A: PEER message
