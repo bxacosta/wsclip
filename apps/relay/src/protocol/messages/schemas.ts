@@ -7,11 +7,6 @@ const headerSchema = z.strictObject({
     timestamp: z.iso.datetime(),
 });
 
-export const baseMessageSchema = z.strictObject({
-    header: headerSchema,
-    payload: z.record(z.string(), z.unknown()),
-});
-
 export const metadataSchema = z.record(z.string(), z.unknown());
 
 export const controlMessageSchema = z.object({

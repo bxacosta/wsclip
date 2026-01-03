@@ -1,14 +1,13 @@
 import { ErrorCode } from "@/protocol";
 import { getContext, type WebSocketData } from "@/server/core";
-import type { ErrorResponse, HealthResponse } from "@/server/http/types.ts";
-import {
-    buildResponseError,
-    extractBearerToken,
-    extractConnectionParams,
-    validateChannelId,
-    validatePeerId,
-} from "@/server/http/utils.ts";
+import { buildHttpError, buildHttpErrorRaw } from "@/server/errors";
+import { extractBearerToken, extractConnectionParams, validateChannelId, validatePeerId } from "@/server/http/utils.ts";
 import type { AppServer } from "@/server.ts";
+
+interface HealthResponse {
+    status: "ok";
+    timestamp: string;
+}
 
 export function handleUpgrade(request: Request, server: AppServer): Response | undefined {
     const { logger, config, rateLimiter } = getContext();
@@ -16,24 +15,24 @@ export function handleUpgrade(request: Request, server: AppServer): Response | u
     const ip = server.requestIP(request)?.address ?? "unknown";
     if (!rateLimiter.checkLimit(ip)) {
         logger.warn({ ip }, "Connection rejected due to rate limit");
-        return buildResponseError(ErrorCode.RATE_LIMIT_EXCEEDED);
+        return buildHttpError(ErrorCode.RATE_LIMIT_EXCEEDED);
     }
 
     const { channelId, peerId, secret } = extractConnectionParams(request);
 
     if (!validateChannelId(channelId)) {
         logger.warn({ channelId }, "Invalid channel ID");
-        return buildResponseError(ErrorCode.INVALID_CHANNEL_ID);
+        return buildHttpError(ErrorCode.INVALID_CHANNEL_ID);
     }
 
     if (!validatePeerId(peerId)) {
         logger.warn({ peerId }, "Invalid peer ID");
-        return buildResponseError(ErrorCode.INVALID_PEER_ID);
+        return buildHttpError(ErrorCode.INVALID_PEER_ID);
     }
 
     if (secret !== config.serverSecret) {
         logger.warn({ secret }, "Invalid secret");
-        return buildResponseError(ErrorCode.INVALID_SECRET);
+        return buildHttpError(ErrorCode.INVALID_SECRET);
     }
 
     const data: WebSocketData = {
@@ -48,14 +47,7 @@ export function handleUpgrade(request: Request, server: AppServer): Response | u
     const upgraded = server.upgrade(request, { data });
 
     if (!upgraded) {
-        return Response.json(
-            {
-                status: 500,
-                code: "UPGRADE_FAILED",
-                message: "WebSocket upgrade failed",
-            },
-            { status: 500 },
-        );
+        return buildHttpErrorRaw(500, "UPGRADE_FAILED", "WebSocket upgrade failed");
     }
 }
 
@@ -77,7 +69,7 @@ export function handleStats(request: Request): Response {
 
     const token = extractBearerToken(request);
     if (token !== config.serverSecret) {
-        return buildResponseError(ErrorCode.INVALID_SECRET);
+        return buildHttpError(ErrorCode.INVALID_SECRET);
     }
 
     const rateLimitStats = rateLimiter.getStats();
@@ -103,11 +95,5 @@ export function handleStats(request: Request): Response {
 }
 
 export function handleNotFound(): Response {
-    const response: ErrorResponse = {
-        status: 404,
-        code: "NOT_FOUND",
-        message: "Resource not found",
-    };
-
-    return Response.json(response, { status: 404 });
+    return buildHttpErrorRaw(404, "NOT_FOUND", "Resource not found");
 }

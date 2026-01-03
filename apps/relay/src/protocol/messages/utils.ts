@@ -1,6 +1,6 @@
-import type { BaseMessage } from "@/protocol";
+import type { CRSPMessage } from "@/protocol";
 
-export function serializeMessage(message: BaseMessage): string {
+export function serializeMessage(message: CRSPMessage): string {
     return JSON.stringify(message);
 }
 
