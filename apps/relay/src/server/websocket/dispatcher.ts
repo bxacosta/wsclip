@@ -14,9 +14,9 @@ import {
 import { type AppWebSocket, getContext } from "@/server/core";
 import { handleAckMessage, handleControlMessage, handleDataMessage } from "@/server/websocket/handler";
 
-export function sendReadyMessage(ws: AppWebSocket, otherConnection: Connection | null): void {
+export function sendReadyMessage(ws: AppWebSocket, otherConnections: Connection[]): void {
     const { sessionId, connection } = ws.data;
-    const readyMessage = createReadyMessage(connection.id, sessionId, otherConnection);
+    const readyMessage = createReadyMessage(connection.id, sessionId, otherConnections);
     ws.send(serializeMessage(readyMessage));
 }
 

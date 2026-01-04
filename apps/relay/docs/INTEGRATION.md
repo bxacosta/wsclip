@@ -68,6 +68,7 @@ Authorization: Bearer <SECRET>
 ```
 
 **Response** (200 OK):
+
 ```json
 {
   "activeSessions": 2,
@@ -150,31 +151,38 @@ Sent immediately after successful WebSocket connection.
   "payload": {
     "connectionId": "my-device",
     "sessionId": "ABC12345",
-    "otherConnection": null
+    "otherConnections": []
   }
 }
 ```
 
 **Payload Fields**:
 
-| Field             | Type           | Description                                |
-|-------------------|----------------|--------------------------------------------|
-| `connectionId`    | string         | Your connection identifier                 |
-| `sessionId`       | string         | Session identifier                         |
-| `otherConnection` | object or null | Existing connection info, or null if alone |
+| Field              | Type   | Description                                   |
+|--------------------|--------|-----------------------------------------------|
+| `connectionId`     | string | Your connection identifier                    |
+| `sessionId`        | string | Session identifier                            |
+| `otherConnections` | array  | Array of existing connections (empty if none) |
 
 **When a connection is already present**:
+
 ```json
 {
-  "header": { "type": "ready", "id": "...", "timestamp": "..." },
+  "header": {
+    "type": "ready",
+    "id": "...",
+    "timestamp": "..."
+  },
   "payload": {
     "connectionId": "my-device",
     "sessionId": "ABC12345",
-    "otherConnection": {
-      "id": "other-device",
-      "address": "::1",
-      "connectedAt": "2025-12-29T10:25:00.000Z"
-    }
+    "otherConnections": [
+      {
+        "id": "other-device",
+        "address": "::1",
+        "connectedAt": "2025-12-29T10:25:00.000Z"
+      }
+    ]
   }
 }
 ```
@@ -219,10 +227,10 @@ Sent when another connection's status changes in the session.
 
 **Payload Fields**:
 
-| Field          | Type                               | Description           |
-|----------------|------------------------------------|-----------------------|
-| `connectionId` | string                             | Connection identifier |
-| `status`       | `"connected"` or `"disconnected"`  | Connection status     |
+| Field          | Type                              | Description           |
+|----------------|-----------------------------------|-----------------------|
+| `connectionId` | string                            | Connection identifier |
+| `status`       | `"connected"` or `"disconnected"` | Connection status     |
 
 ---
 
@@ -255,7 +263,8 @@ Sent when an error occurs.
 
 ## Client to Client Messages
 
-These messages are sent by clients and relayed by the server to the other connection. The server validates the structure but does
+These messages are sent by clients and relayed by the server to the other connection. The server validates the structure
+but does
 not modify the content.
 
 ### DATA
@@ -505,7 +514,7 @@ These errors close the WebSocket connection.
 2. Send ACK for important DATA messages
 3. Handle `NO_OTHER_CONNECTION` errors (queue or discard)
 4. Implement message deduplication using `id` field
-5. Check `otherConnection` field in `ready` to know if someone is already connected
+5. Check `otherConnections` array in `ready` to know if others are already connected
 
 ### Optional
 
@@ -570,11 +579,11 @@ interface ReadyMessage {
     payload: {
         connectionId: string;
         sessionId: string;
-        otherConnection: {
+        otherConnections: Array<{
             id: string;
             address: string;
             connectedAt: string;
-        } | null;
+        }>;
     };
 }
 
@@ -613,7 +622,7 @@ type Message = ServerMessage | ClientMessage;
 | Connection status | `connection` | Server -> Client | connectionId, status    |
 | Error occurred    | `error`      | Server -> Client | code, message           |
 
-**Server Shutdown**: When the server shuts down, it closes all connections with WebSocket close code `1001` (Going Away) 
+**Server Shutdown**: When the server shuts down, it closes all connections with WebSocket close code `1001` (Going Away)
 and reason "Server shutting down". Clients should implement reconnection logic with exponential backoff.
 
 ---

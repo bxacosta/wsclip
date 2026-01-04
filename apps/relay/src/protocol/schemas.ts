@@ -57,7 +57,7 @@ export const readyMessageSchema = z.object({
     payload: z.strictObject({
         connectionId: z.string(),
         sessionId: z.string(),
-        otherConnection: connectionSchema.nullable(),
+        otherConnections: z.array(connectionSchema),
     }),
 });
 

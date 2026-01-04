@@ -287,7 +287,7 @@ server-generated.
 
 #### 4.3.1 READY Message (Server -> Client)
 
-**Purpose**: Confirm successful authentication and provide session state including other connection information.
+**Purpose**: Confirm successful authentication and provide session state including other connections information.
 
 **Structure**:
 
@@ -301,11 +301,13 @@ server-generated.
   "payload": {
     "sessionId": "abc12345",
     "connectionId": "laptop-work",
-    "otherConnection": {
-      "id": "laptop-home",
-      "address": "192.168.10.1",
-      "connectedAt": "2025-12-24T10:30:00.000Z"
-    }
+    "otherConnections": [
+      {
+        "id": "laptop-home",
+        "address": "192.168.10.1",
+        "connectedAt": "2025-12-24T10:30:00.000Z"
+      }
+    ]
   }
 }
 ```
@@ -313,7 +315,7 @@ server-generated.
 **Payload Fields**:
 - `connectionId` (string): REQUIRED - Connected connection identifier
 - `sessionId` (string): REQUIRED - Session ID (8 alphanumeric characters)
-- `otherConnection` (object | null): REQUIRED - Existing connection information or null if no other connection
+- `otherConnections` (array): REQUIRED - Array of existing connections in the session (empty if no other connections)
 
 #### 4.3.2 CONNECTION Message (Server -> Client)
 
@@ -434,7 +436,7 @@ implementation-specific, but the categories are defined by the protocol:
 3. Server -> Client: READY message (sent immediately upon connection)
    {
      "header": { "type": "ready", ... },
-     "payload": { "otherConnection": null, ... }
+     "payload": { "otherConnections": [], ... }
    }
 ```
 
@@ -443,10 +445,10 @@ implementation-specific, but the categories are defined by the protocol:
 ```
 4. Client B -> Server: WebSocket Upgrade (same process as Client A)
 
-5. Server -> Client B: READY message (includes existing connection info)
+5. Server -> Client B: READY message (includes existing connections info)
    {
      "header": { "type": "ready", ... },
-     "payload": { "otherConnection": { "id": "laptop", ... }, ... }
+     "payload": { "otherConnections": [{ "id": "laptop", ... }], ... }
    }
 
 6. Server -> Client A: CONNECTION message

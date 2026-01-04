@@ -73,7 +73,7 @@ export class SessionManager {
         ws.subscribe(sessionId);
         this.statsCollector.emit({ type: "connection_added", sessionId, connectionId: connection.id });
 
-        const otherConnection = this.getOtherConnections(sessionId, connection.id).at(0)?.info ?? null;
+        const otherConnections = this.getOtherConnections(sessionId, connection.id).map(c => c.info);
         const shouldNotifyOthers = session.connections.size > 1;
 
         return {
@@ -81,7 +81,7 @@ export class SessionManager {
             sessionCreated,
             totalConnections: session.connections.size,
             totalSessions: this.sessions.size,
-            otherConnection,
+            otherConnections,
             shouldNotifyOthers,
         };
     }

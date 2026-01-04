@@ -29,7 +29,7 @@ export type AddConnectionSuccess = {
     sessionCreated: boolean;
     totalConnections: number;
     totalSessions: number;
-    otherConnection: ProtocolConnection | null;
+    otherConnections: ProtocolConnection[];
     shouldNotifyOthers: boolean;
 };
 

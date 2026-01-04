@@ -112,7 +112,7 @@ export function createWebSocketHandler(): WebSocketHandler<WebSocketData> {
 
             logger.info({ totalConnections: result.totalConnections }, "Connection joined session");
 
-            sendReadyMessage(ws, result.otherConnection);
+            sendReadyMessage(ws, result.otherConnections);
 
             if (result.shouldNotifyOthers) {
                 notifyOtherConnections(ws, ConnectionStatus.CONNECTED, logger);

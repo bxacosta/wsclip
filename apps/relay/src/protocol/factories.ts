@@ -12,7 +12,7 @@ import { MessageType } from "./types.ts";
 export function createReadyMessage(
     connectionId: string,
     sessionId: string,
-    otherConnection: Connection | null,
+    otherConnections: Connection[],
 ): ReadyMessage {
     return {
         header: {
@@ -23,7 +23,7 @@ export function createReadyMessage(
         payload: {
             connectionId,
             sessionId,
-            otherConnection,
+            otherConnections,
         },
     };
 }
