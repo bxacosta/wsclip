@@ -1,10 +1,10 @@
 import type { Logger } from "pino";
-import { createConnectionMessage, createReadyMessage, serializeMessage } from "@/protocol/messages";
+import { createConnectionMessage, createReadyMessage, serializeMessage } from "@/protocol";
 import type { AckMessage, Connection, ControlMessage, DataMessage } from "@/protocol/types";
-import { type ConnectionEventType, MessageType } from "@/protocol/types/enums";
+import { type ConnectionEventType, MessageType } from "@/protocol/types";
+import type { ValidatedMessage } from "@/protocol/validators";
 import { type AppWebSocket, getContext } from "@/server/core";
 import { handleAckMessage, handleControlMessage, handleDataMessage } from "@/server/websocket/handler";
-import type { ValidatedMessage } from "@/server/websocket/validator";
 
 export function sendReadyMessage(ws: AppWebSocket, otherConnection: Connection | null): void {
     const { sessionId, connection } = ws.data;

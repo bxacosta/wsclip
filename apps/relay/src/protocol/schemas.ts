@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ConnectionEventType, ContentType, ErrorCode, MessageType } from "@/protocol/types/enums.ts";
+import { ConnectionEventType, ContentType, ErrorCode, MessageType } from "./types.ts";
 
 const headerSchema = z.strictObject({
     type: z.enum(MessageType),
@@ -8,6 +8,8 @@ const headerSchema = z.strictObject({
 });
 
 export const metadataSchema = z.record(z.string(), z.unknown());
+
+// Client Messages
 
 export const controlMessageSchema = z.object({
     header: headerSchema.extend({ type: z.literal(MessageType.CONTROL) }),
@@ -41,6 +43,8 @@ export const ackMessageSchema = z.object({
         metadata: metadataSchema.nullable().optional(),
     }),
 });
+
+// System Messages
 
 export const connectionSchema = z.strictObject({
     id: z.string().min(1),

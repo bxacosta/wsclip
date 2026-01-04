@@ -1,4 +1,4 @@
-import type { CRSPMessage } from "@/protocol";
+import type { CRSPMessage } from "./types.ts";
 
 export function serializeMessage(message: CRSPMessage): string {
     return JSON.stringify(message);

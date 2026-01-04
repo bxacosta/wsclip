@@ -1,12 +1,12 @@
-import { ackMessageSchema, controlMessageSchema, dataMessageSchema } from "@/protocol/messages/schemas";
-import { parseMessage } from "@/protocol/messages/utils";
-import type { AckMessage, ControlMessage, DataMessage } from "@/protocol/types";
-import { ErrorCode, MessageType } from "@/protocol/types/enums";
+import { ackMessageSchema, controlMessageSchema, dataMessageSchema } from "./schemas.ts";
+import type { AckMessage, ControlMessage, DataMessage, ErrorCode } from "./types.ts";
+import { MessageType } from "./types.ts";
+import { parseMessage } from "./utils.ts";
 
 export type ValidatedMessage = DataMessage | AckMessage | ControlMessage;
 
-type ValidationSuccess = { valid: true; data: ValidatedMessage };
-type ValidationError = { valid: false; error: { code: ErrorCode; message: string } };
+export type ValidationSuccess = { valid: true; data: ValidatedMessage };
+export type ValidationError = { valid: false; error: { code: ErrorCode; message: string } };
 export type ValidationResult = ValidationSuccess | ValidationError;
 
 function fail(code: ErrorCode, message: string): ValidationError {
@@ -27,13 +27,13 @@ export function validateMessage(raw: string, maxSize: number): ValidationResult 
     const size = Buffer.byteLength(raw, "utf-8");
 
     if (size > maxSize) {
-        return fail(ErrorCode.MESSAGE_TOO_LARGE, `Message size ${size} exceeds maximum ${maxSize} bytes`);
+        return fail("MESSAGE_TOO_LARGE" as ErrorCode, `Message size ${size} exceeds maximum ${maxSize} bytes`);
     }
 
     const parsed = parseMessage(raw);
 
     if (parsed === null) {
-        return fail(ErrorCode.INVALID_MESSAGE, "Invalid JSON format");
+        return fail("INVALID_MESSAGE" as ErrorCode, "Invalid JSON format");
     }
 
     const type = getMessageType(parsed);
@@ -41,7 +41,7 @@ export function validateMessage(raw: string, maxSize: number): ValidationResult 
     if (type === MessageType.DATA) {
         const result = dataMessageSchema.safeParse(parsed);
         if (!result.success) {
-            return fail(ErrorCode.INVALID_MESSAGE, result.error.issues[0]?.message ?? "Invalid DATA message");
+            return fail("INVALID_MESSAGE" as ErrorCode, result.error.issues[0]?.message ?? "Invalid DATA message");
         }
         return { valid: true, data: result.data };
     }
@@ -49,7 +49,7 @@ export function validateMessage(raw: string, maxSize: number): ValidationResult 
     if (type === MessageType.ACK) {
         const result = ackMessageSchema.safeParse(parsed);
         if (!result.success) {
-            return fail(ErrorCode.INVALID_MESSAGE, result.error.issues[0]?.message ?? "Invalid ACK message");
+            return fail("INVALID_MESSAGE" as ErrorCode, result.error.issues[0]?.message ?? "Invalid ACK message");
         }
         return { valid: true, data: result.data };
     }
@@ -57,10 +57,10 @@ export function validateMessage(raw: string, maxSize: number): ValidationResult 
     if (type === MessageType.CONTROL) {
         const result = controlMessageSchema.safeParse(parsed);
         if (!result.success) {
-            return fail(ErrorCode.INVALID_MESSAGE, result.error.issues[0]?.message ?? "Invalid CONTROL message");
+            return fail("INVALID_MESSAGE" as ErrorCode, result.error.issues[0]?.message ?? "Invalid CONTROL message");
         }
         return { valid: true, data: result.data };
     }
 
-    return fail(ErrorCode.INVALID_MESSAGE, `Unknown message type: ${type}`);
+    return fail("INVALID_MESSAGE" as ErrorCode, `Unknown message type: ${type}`);
 }

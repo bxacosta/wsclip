@@ -1,12 +1,17 @@
 import type { ServerWebSocket, WebSocketHandler } from "bun";
 import type { Logger } from "pino";
-import { type AckMessage, ConnectionEventType, type ControlMessage, type DataMessage } from "@/protocol/types";
-import { ErrorCode } from "@/protocol/types/enums";
+import {
+    type AckMessage,
+    ConnectionEventType,
+    type ControlMessage,
+    type DataMessage,
+    ErrorCode,
+} from "@/protocol/types";
+import { validateMessage } from "@/protocol/validators";
 import { type AppWebSocket, getContext, type WebSocketData } from "@/server/core";
 import { sendWebSocketError } from "@/server/errors";
 import type { RelayResultItem } from "@/server/session/types";
 import { dispatchMessage, notifyOtherConnections, sendReadyMessage } from "@/server/websocket/dispatcher.ts";
-import { validateMessage } from "@/server/websocket/validator.ts";
 
 export function handleDataMessage(ws: AppWebSocket, message: DataMessage, logger: Logger): void {
     const { sessionManager } = getContext();

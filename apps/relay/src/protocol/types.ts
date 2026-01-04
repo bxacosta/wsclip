@@ -1,3 +1,16 @@
+import type { z } from "zod";
+import type {
+    ackMessageSchema,
+    connectionMessageSchema,
+    connectionSchema,
+    controlMessageSchema,
+    dataMessageSchema,
+    errorMessageSchema,
+    readyMessageSchema,
+} from "./schemas.ts";
+
+// Enums and Constants
+
 export const MessageType = {
     CONTROL: "control",
     DATA: "data",
@@ -121,3 +134,16 @@ export const ErrorCatalog: Record<ErrorCode, ErrorDefinition> = {
         message: "Unexpected server error",
     },
 } as const;
+
+// Message Type Definitions (inferred from schemas)
+
+export type ControlMessage = z.infer<typeof controlMessageSchema>;
+export type DataMessage = z.infer<typeof dataMessageSchema>;
+export type AckMessage = z.infer<typeof ackMessageSchema>;
+
+export type ReadyMessage = z.infer<typeof readyMessageSchema>;
+export type ConnectionMessage = z.infer<typeof connectionMessageSchema>;
+export type ErrorMessage = z.infer<typeof errorMessageSchema>;
+
+export type Connection = z.infer<typeof connectionSchema>;
+export type CRSPMessage = ControlMessage | DataMessage | AckMessage | ReadyMessage | ConnectionMessage | ErrorMessage;

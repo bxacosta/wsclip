@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { getTimestamp } from "@/protocol/messages/utils.ts";
 import type {
     Connection,
     ConnectionEventType,
@@ -7,8 +6,8 @@ import type {
     ErrorCode,
     ErrorMessage,
     ReadyMessage,
-} from "@/protocol/types";
-import { MessageType } from "@/protocol/types/enums";
+} from "./types.ts";
+import { MessageType } from "./types.ts";
 
 export function createReadyMessage(
     connectionId: string,
@@ -19,7 +18,7 @@ export function createReadyMessage(
         header: {
             type: MessageType.READY,
             id: randomUUID(),
-            timestamp: getTimestamp(),
+            timestamp: new Date().toISOString(),
         },
         payload: {
             connectionId,
@@ -34,7 +33,7 @@ export function createConnectionMessage(connectionId: string, event: ConnectionE
         header: {
             type: MessageType.CONNECTION,
             id: randomUUID(),
-            timestamp: getTimestamp(),
+            timestamp: new Date().toISOString(),
         },
         payload: {
             connectionId,
@@ -53,7 +52,7 @@ export function createErrorMessage(
         header: {
             type: MessageType.ERROR,
             id: randomUUID(),
-            timestamp: getTimestamp(),
+            timestamp: new Date().toISOString(),
         },
         payload: {
             code,

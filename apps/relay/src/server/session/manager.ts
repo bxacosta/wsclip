@@ -1,6 +1,6 @@
 import type { CRSPMessage } from "@/protocol";
-import { serializeMessage } from "@/protocol/messages";
-import { ErrorCode } from "@/protocol/types/enums";
+import { serializeMessage } from "@/protocol";
+import { ErrorCode } from "@/protocol/types";
 import type { AppWebSocket } from "@/server/core";
 import type { SessionInfo, StatsCollector } from "@/server/stats";
 import type {

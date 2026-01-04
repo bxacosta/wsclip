@@ -1,4 +1,4 @@
-import { createErrorMessage, serializeMessage } from "@/protocol/messages";
+import { createErrorMessage, serializeMessage } from "@/protocol";
 import { ErrorCatalog, type ErrorCode } from "@/protocol/types";
 import type { AppWebSocket } from "@/server/core";
 
