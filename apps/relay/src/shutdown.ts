@@ -1,49 +1,60 @@
 import type { AppServer } from "@/server";
 import { getContext } from "@/server/core";
-import { flushLogger } from "@/server/core/logger";
+import { flushLogger, type Logger } from "@/server/core/logger";
+import type { RateLimiter } from "@/server/security";
+import type { SessionManager } from "@/server/session";
+
+const SHUTDOWN_TIMEOUT_MS = 10_000;
+const SHUTDOWN_SIGNALS = ["SIGINT", "SIGTERM", "SIGBREAK"] as const;
 
 let isShuttingDown = false;
 
-const SHUTDOWN_CLOSE_CODE = 1001;
-const SHUTDOWN_REASON = "Server shutting down";
+interface ShutdownDeps {
+    logger: Logger;
+    sessionManager: SessionManager;
+    rateLimiter: RateLimiter;
+}
 
-async function performShutdown(signal: string, server: AppServer): Promise<void> {
-    const { logger, sessionManager, rateLimiter } = getContext();
-    logger.info({ signal }, "Shutdown initiated");
-
-    try {
-        const closeResult = sessionManager.close();
-
-        logger.info(
-            { closedCount: closeResult.closedCount, code: SHUTDOWN_CLOSE_CODE, reason: SHUTDOWN_REASON },
-            "All connections closed",
-        );
-
-        for (const error of closeResult.errors) {
-            logger.error(
-                { err: error.error, connectionId: error.connectionId, sessionId: error.sessionId },
-                "Connection close failed",
-            );
-        }
-
-        rateLimiter.stop();
-        await server.stop();
-        await flushLogger(logger);
-        process.exit(0);
-    } catch (err) {
-        logger.error({ err }, "Shutdown error");
-        process.exit(1);
+export function setupShutdown(server: AppServer): void {
+    for (const signal of SHUTDOWN_SIGNALS) {
+        process.on(signal, () => handleShutdown(signal, server));
     }
 }
 
-export function gracefulShutdown(signal: string, server: AppServer): void {
+function handleShutdown(signal: string, server: AppServer): void {
     if (isShuttingDown) return;
     isShuttingDown = true;
 
-    console.log(`[shutdown] Received ${signal}, closing connections...`);
+    const { logger, sessionManager, rateLimiter } = getContext();
+    logger.info({ signal }, "Shutdown initiated");
 
-    performShutdown(signal, server).catch(err => {
-        console.error("[shutdown] Fatal error:", err);
+    const timeout = setTimeout(() => {
+        logger.fatal("Shutdown timeout reached, forcing exit");
         process.exit(1);
-    });
+    }, SHUTDOWN_TIMEOUT_MS);
+
+    shutdown(server, { logger, sessionManager, rateLimiter })
+        .catch(err => {
+            console.error("[shutdown] Fatal error:", err);
+            process.exit(1);
+        })
+        .finally(() => clearTimeout(timeout));
+}
+
+async function shutdown(server: AppServer, deps: ShutdownDeps): Promise<void> {
+    const { logger, sessionManager, rateLimiter } = deps;
+
+    const closeResult = sessionManager.close();
+
+    logger.info({ closedCount: closeResult.closedCount }, "Connections closed");
+
+    for (const error of closeResult.errors) {
+        logger.error({ err: error.error, connectionId: error.connectionId }, "Connection close error");
+    }
+
+    rateLimiter.stop();
+    await server.stop();
+    await flushLogger(logger);
+
+    process.exit(0);
 }

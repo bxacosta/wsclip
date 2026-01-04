@@ -75,6 +75,7 @@ export class RateLimiter {
             clearInterval(this.cleanupInterval);
             this.cleanupInterval = null;
         }
+        this.limits.clear();
     }
 
     getInfo(): RateLimiterInfo {

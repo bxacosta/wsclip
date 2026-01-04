@@ -198,6 +198,7 @@ export class SessionManager {
             }
         }
 
+        this.sessions.clear();
         return { closedCount, errors };
     }
 
