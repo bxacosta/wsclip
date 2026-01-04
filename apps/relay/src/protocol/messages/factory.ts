@@ -1,9 +1,20 @@
 import { randomUUID } from "node:crypto";
 import { getTimestamp } from "@/protocol/messages/utils.ts";
-import type { ErrorCode, ErrorMessage, Peer, PeerEventType, PeerMessage, ReadyMessage } from "@/protocol/types";
+import type {
+    Connection,
+    ConnectionEventType,
+    ConnectionMessage,
+    ErrorCode,
+    ErrorMessage,
+    ReadyMessage,
+} from "@/protocol/types";
 import { MessageType } from "@/protocol/types/enums";
 
-export function createReadyMessage(peerId: string, channelId: string, peer: Peer | null): ReadyMessage {
+export function createReadyMessage(
+    connectionId: string,
+    sessionId: string,
+    otherConnection: Connection | null,
+): ReadyMessage {
     return {
         header: {
             type: MessageType.READY,
@@ -11,22 +22,22 @@ export function createReadyMessage(peerId: string, channelId: string, peer: Peer
             timestamp: getTimestamp(),
         },
         payload: {
-            peerId,
-            channelId,
-            peer,
+            connectionId,
+            sessionId,
+            otherConnection,
         },
     };
 }
 
-export function createPeerMessage(peerId: string, event: PeerEventType): PeerMessage {
+export function createConnectionMessage(connectionId: string, event: ConnectionEventType): ConnectionMessage {
     return {
         header: {
-            type: MessageType.PEER,
+            type: MessageType.CONNECTION,
             id: randomUUID(),
             timestamp: getTimestamp(),
         },
         payload: {
-            peerId,
+            connectionId,
             event,
         },
     };

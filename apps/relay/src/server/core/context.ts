@@ -27,13 +27,13 @@ export function initContext(): AppContext {
             maxConnections: config.rateLimitMax,
             windowSec: config.rateLimitWindowSec,
         },
-        logger,
+        statsCollector,
     });
 
     const sessionManager = createSessionManager({
         config: {
             maxSessions: config.maxSessions,
-            connectionsPerSession: config.peersPerSession,
+            connectionsPerSession: config.connectionsPerSession,
         },
         statsCollector,
     });

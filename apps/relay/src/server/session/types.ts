@@ -1,15 +1,15 @@
-import type { ErrorCode, Peer } from "@/protocol/types";
+import type { ErrorCode, Connection as ProtocolConnection } from "@/protocol/types";
 import type { AppWebSocket } from "@/server/core";
 import type { StatsCollector } from "@/server/stats";
 
-export interface Connection {
+export interface SessionConnection {
     ws: AppWebSocket;
-    client: Peer;
+    info: ProtocolConnection;
 }
 
 export interface Session {
     sessionId: string;
-    connections: Map<string, Connection>;
+    connections: Map<string, SessionConnection>;
     createdAt: Date;
 }
 
@@ -29,8 +29,8 @@ export type AddConnectionSuccess = {
     sessionCreated: boolean;
     totalConnections: number;
     totalSessions: number;
-    existingPeer: Peer | null;
-    shouldNotifyPeers: boolean;
+    otherConnection: ProtocolConnection | null;
+    shouldNotifyOthers: boolean;
 };
 
 export type AddConnectionFailure = {
@@ -52,7 +52,7 @@ export type RemoveConnectionResult =
           removed: true;
           sessionDestroyed: boolean;
           remainingConnections: number;
-          shouldNotifyPeers: boolean;
+          shouldNotifyOthers: boolean;
       }
     | {
           removed: false;
@@ -61,7 +61,7 @@ export type RemoveConnectionResult =
 
 // RelayResult types
 export type RelayResultItem = {
-    clientId: string;
+    connectionId: string;
     success: boolean;
     status: "sent" | "queued" | "dropped";
     sizeBytes: number;

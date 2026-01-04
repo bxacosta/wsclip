@@ -1,2 +1,2 @@
 export * from "./manager";
-export type { Connection, Session } from "./types";
+export type { Session, SessionConnection } from "./types";

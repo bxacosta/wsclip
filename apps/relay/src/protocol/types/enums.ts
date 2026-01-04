@@ -3,7 +3,7 @@ export const MessageType = {
     DATA: "data",
     ACK: "ack",
     READY: "ready",
-    PEER: "peer",
+    CONNECTION: "connection",
     ERROR: "error",
 } as const;
 
@@ -11,15 +11,15 @@ export type MessageType = (typeof MessageType)[keyof typeof MessageType];
 
 export const ErrorCode = {
     INVALID_SECRET: "INVALID_SECRET",
-    INVALID_CHANNEL_ID: "INVALID_CHANNEL_ID",
-    INVALID_PEER_ID: "INVALID_PEER_ID",
-    CHANNEL_FULL: "CHANNEL_FULL",
-    DUPLICATE_PEER_ID: "DUPLICATE_PEER_ID",
+    INVALID_SESSION_ID: "INVALID_SESSION_ID",
+    INVALID_CONNECTION_ID: "INVALID_CONNECTION_ID",
+    SESSION_FULL: "SESSION_FULL",
+    DUPLICATE_CONNECTION_ID: "DUPLICATE_CONNECTION_ID",
     INVALID_MESSAGE: "INVALID_MESSAGE",
     MESSAGE_TOO_LARGE: "MESSAGE_TOO_LARGE",
-    NO_PEER_CONNECTED: "NO_PEER_CONNECTED",
+    NO_OTHER_CONNECTION: "NO_OTHER_CONNECTION",
     RATE_LIMIT_EXCEEDED: "RATE_LIMIT_EXCEEDED",
-    MAX_CHANNELS_REACHED: "MAX_CHANNELS_REACHED",
+    MAX_SESSIONS_REACHED: "MAX_SESSIONS_REACHED",
     INTERNAL_ERROR: "INTERNAL_ERROR",
 } as const;
 
@@ -32,12 +32,12 @@ export const ContentType = {
 
 export type ContentType = (typeof ContentType)[keyof typeof ContentType];
 
-export const PeerEventType = {
+export const ConnectionEventType = {
     JOINED: "joined",
     LEFT: "left",
 } as const;
 
-export type PeerEventType = (typeof PeerEventType)[keyof typeof PeerEventType];
+export type ConnectionEventType = (typeof ConnectionEventType)[keyof typeof ConnectionEventType];
 
 export type ErrorDefinition = Readonly<{
     code: number;
@@ -60,11 +60,11 @@ export const ErrorCatalog: Record<ErrorCode, ErrorDefinition> = {
         recoverable: true,
         message: "Message exceeds configured size limit",
     },
-    NO_PEER_CONNECTED: {
+    NO_OTHER_CONNECTION: {
         code: 4003,
         httpStatus: 400,
         recoverable: true,
-        message: "No peer available to receive the message",
+        message: "No other connection available to receive the message",
     },
 
     // 4100-4199: Validation errors (fatal)
@@ -74,31 +74,31 @@ export const ErrorCatalog: Record<ErrorCode, ErrorDefinition> = {
         recoverable: false,
         message: "Invalid authentication secret",
     },
-    INVALID_CHANNEL_ID: {
+    INVALID_SESSION_ID: {
         code: 4101,
         httpStatus: 400,
         recoverable: false,
-        message: "Invalid channel identifier",
+        message: "Invalid session identifier",
     },
-    INVALID_PEER_ID: {
+    INVALID_CONNECTION_ID: {
         code: 4102,
         httpStatus: 400,
         recoverable: false,
-        message: "Invalid peer identifier",
+        message: "Invalid connection identifier",
     },
 
     // 4200-4299: State/limit errors (fatal)
-    CHANNEL_FULL: {
+    SESSION_FULL: {
         code: 4200,
         httpStatus: 503,
         recoverable: false,
-        message: "Channel has reached maximum peer limit",
+        message: "Session has reached maximum connection limit",
     },
-    DUPLICATE_PEER_ID: {
+    DUPLICATE_CONNECTION_ID: {
         code: 4201,
         httpStatus: 409,
         recoverable: false,
-        message: "Peer identifier already in use in channel",
+        message: "Connection identifier already in use in session",
     },
     RATE_LIMIT_EXCEEDED: {
         code: 4202,
@@ -106,11 +106,11 @@ export const ErrorCatalog: Record<ErrorCode, ErrorDefinition> = {
         recoverable: false,
         message: "Connection rate limit exceeded",
     },
-    MAX_CHANNELS_REACHED: {
+    MAX_SESSIONS_REACHED: {
         code: 4203,
         httpStatus: 503,
         recoverable: false,
-        message: "Server channel limit reached",
+        message: "Server session limit reached",
     },
 
     // 4900-4999: Internal errors (fatal)

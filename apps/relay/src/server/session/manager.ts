@@ -6,10 +6,10 @@ import type { SessionInfo, StatsCollector } from "@/server/stats";
 import type {
     AddConnectionResult,
     CloseResult,
-    Connection,
     RelayResult,
     RemoveConnectionResult,
     Session,
+    SessionConnection,
     SessionManagerConfig,
     SessionManagerDependencies,
 } from "./types";
@@ -25,7 +25,7 @@ export class SessionManager {
     }
 
     addConnection(ws: AppWebSocket): AddConnectionResult {
-        const { sessionId, client } = ws.data;
+        const { sessionId, connection } = ws.data;
         let session = this.sessions.get(sessionId);
         let sessionCreated = false;
 
@@ -33,7 +33,7 @@ export class SessionManager {
             if (this.sessions.size >= this.config.maxSessions) {
                 return {
                     success: false,
-                    errorCode: ErrorCode.MAX_CHANNELS_REACHED,
+                    errorCode: ErrorCode.MAX_SESSIONS_REACHED,
                     context: {
                         currentSessions: this.sessions.size,
                         maxSessions: this.config.maxSessions,
@@ -55,7 +55,7 @@ export class SessionManager {
         if (session.connections.size >= this.config.connectionsPerSession) {
             return {
                 success: false,
-                errorCode: ErrorCode.CHANNEL_FULL,
+                errorCode: ErrorCode.SESSION_FULL,
                 context: {
                     currentConnections: session.connections.size,
                     connectionsPerSession: this.config.connectionsPerSession,
@@ -63,49 +63,49 @@ export class SessionManager {
             };
         }
 
-        if (session.connections.has(client.id)) {
+        if (session.connections.has(connection.id)) {
             return {
                 success: false,
-                errorCode: ErrorCode.DUPLICATE_PEER_ID,
+                errorCode: ErrorCode.DUPLICATE_CONNECTION_ID,
                 context: {},
             };
         }
 
-        session.connections.set(client.id, { ws, client });
+        session.connections.set(connection.id, { ws, info: connection });
         ws.subscribe(sessionId);
-        this.statsCollector.emit({ type: "connection_added", sessionId, connectionId: client.id });
+        this.statsCollector.emit({ type: "connection_added", sessionId, connectionId: connection.id });
 
-        const existingPeer = this.getOtherConnections(sessionId, client.id).at(0)?.client ?? null;
-        const shouldNotifyPeers = session.connections.size > 1;
+        const otherConnection = this.getOtherConnections(sessionId, connection.id).at(0)?.info ?? null;
+        const shouldNotifyOthers = session.connections.size > 1;
 
         return {
             success: true,
             sessionCreated,
             totalConnections: session.connections.size,
             totalSessions: this.sessions.size,
-            existingPeer,
-            shouldNotifyPeers,
+            otherConnection,
+            shouldNotifyOthers,
         };
     }
 
     removeConnection(ws: AppWebSocket): RemoveConnectionResult {
-        const { sessionId, client } = ws.data;
+        const { sessionId, connection } = ws.data;
         const session = this.sessions.get(sessionId);
 
         if (!session) {
             return { removed: false, reason: "session_not_found" };
         }
 
-        const connection = session.connections.get(client.id);
-        if (!connection || connection.ws !== ws) {
+        const sessionConnection = session.connections.get(connection.id);
+        if (!sessionConnection || sessionConnection.ws !== ws) {
             return { removed: false, reason: "connection_mismatch" };
         }
 
-        connection.ws.unsubscribe(sessionId);
-        session.connections.delete(client.id);
-        this.statsCollector.emit({ type: "connection_removed", sessionId, connectionId: client.id });
+        sessionConnection.ws.unsubscribe(sessionId);
+        session.connections.delete(connection.id);
+        this.statsCollector.emit({ type: "connection_removed", sessionId, connectionId: connection.id });
 
-        const shouldNotifyPeers = session.connections.size > 0;
+        const shouldNotifyOthers = session.connections.size > 0;
         let sessionDestroyed = false;
 
         if (session.connections.size === 0) {
@@ -118,33 +118,33 @@ export class SessionManager {
             removed: true,
             sessionDestroyed,
             remainingConnections: session.connections.size,
-            shouldNotifyPeers,
+            shouldNotifyOthers,
         };
     }
 
-    getOtherConnections(sessionId: string, clientId: string): Array<Connection> {
+    getOtherConnections(sessionId: string, connectionId: string): Array<SessionConnection> {
         const session = this.sessions.get(sessionId);
 
         if (!session) return [];
 
         const connections = [];
 
-        for (const [id, connection] of session.connections) {
-            if (id !== clientId) {
-                connections.push(connection);
+        for (const [id, sessionConnection] of session.connections) {
+            if (id !== connectionId) {
+                connections.push(sessionConnection);
             }
         }
 
         return connections;
     }
 
-    hasOtherPeer(ws: AppWebSocket): boolean {
-        return this.getOtherConnections(ws.data.sessionId, ws.data.client.id).length > 0;
+    hasOtherConnection(ws: AppWebSocket): boolean {
+        return this.getOtherConnections(ws.data.sessionId, ws.data.connection.id).length > 0;
     }
 
-    relayToClients(ws: AppWebSocket, message: CRSPMessage): RelayResult {
-        const { sessionId, client } = ws.data;
-        const connections = this.getOtherConnections(sessionId, client.id);
+    relayToConnections(ws: AppWebSocket, message: CRSPMessage): RelayResult {
+        const { sessionId, connection } = ws.data;
+        const connections = this.getOtherConnections(sessionId, connection.id);
 
         if (!connections.length) {
             return { results: [], totalSize: 0 };
@@ -153,23 +153,23 @@ export class SessionManager {
         const serializedMessage = serializeMessage(message);
         const messageSize = Buffer.byteLength(serializedMessage, "utf8");
 
-        const results = connections.map(connection => {
-            const sendResult = connection.ws.send(serializedMessage);
+        const results = connections.map(sessionConnection => {
+            const sendResult = sessionConnection.ws.send(serializedMessage);
 
             if (sendResult === 0) {
                 return {
-                    clientId: connection.client.id,
+                    connectionId: sessionConnection.info.id,
                     success: false,
                     status: "dropped" as const,
                     sizeBytes: messageSize,
-                    errorCode: ErrorCode.NO_PEER_CONNECTED,
+                    errorCode: ErrorCode.NO_OTHER_CONNECTION,
                 };
             }
 
             this.statsCollector.emit({ type: "message_relayed", sizeBytes: messageSize, sessionId });
 
             return {
-                clientId: connection.client.id,
+                connectionId: sessionConnection.info.id,
                 success: true,
                 status: (sendResult > 0 ? "sent" : "queued") as "sent" | "queued",
                 sizeBytes: messageSize,
@@ -186,13 +186,13 @@ export class SessionManager {
         const errors: CloseResult["errors"] = [];
 
         for (const session of this.sessions.values()) {
-            for (const connection of session.connections.values()) {
+            for (const sessionConnection of session.connections.values()) {
                 try {
-                    connection.ws.close(code, reason);
+                    sessionConnection.ws.close(code, reason);
                     closedCount++;
                 } catch (error) {
                     errors.push({
-                        connectionId: connection.client.id,
+                        connectionId: sessionConnection.info.id,
                         sessionId: session.sessionId,
                         error: error instanceof Error ? error : new Error(String(error)),
                     });
@@ -209,10 +209,10 @@ export class SessionManager {
         let newestConnectionAt: Date | null = null;
 
         for (const session of this.sessions.values()) {
-            for (const connection of session.connections.values()) {
+            for (const sessionConnection of session.connections.values()) {
                 totalConnections++;
 
-                const connectedAt = new Date(connection.client.connectedAt);
+                const connectedAt = new Date(sessionConnection.info.connectedAt);
 
                 if (!oldestConnectionAt || connectedAt < oldestConnectionAt) {
                     oldestConnectionAt = connectedAt;

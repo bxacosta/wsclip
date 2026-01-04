@@ -1,62 +1,73 @@
-import type { Logger } from "@/server/core/logger.ts";
+import type { StatsCollector } from "@/server/stats";
 
 interface RateLimitEntry {
     count: number;
     resetAt: number;
 }
 
-export interface RateLimiterConfig {
+export type RateLimiterConfig = Readonly<{
     readonly maxConnections: number;
     readonly windowSec: number;
-}
+}>;
 
-export interface RateLimiterDependencies {
-    readonly config: RateLimiterConfig;
-    readonly logger: Logger;
-}
+export type RateLimiterDependencies = Readonly<{
+    config: RateLimiterConfig;
+    statsCollector: StatsCollector;
+}>;
 
-export interface RateLimiterStats {
+export type RateLimiterInfo = {
     trackedIPs: number;
     maxConnections: number;
     windowMs: number;
-}
+};
+
+export type CheckLimitResult =
+    | { allowed: true; ip: string; currentCount: number }
+    | { allowed: false; ip: string; currentCount: number; limit: number };
 
 const CLEANUP_INTERVAL_MS = 60_000;
 
 export class RateLimiter {
     private readonly config: RateLimiterConfig;
-    private readonly logger: Logger;
+    private readonly statsCollector: StatsCollector;
     private readonly windowMs: number;
     private readonly limits = new Map<string, RateLimitEntry>();
     private cleanupInterval: ReturnType<typeof setInterval> | null = null;
 
     constructor(deps: RateLimiterDependencies) {
         this.config = deps.config;
-        this.logger = deps.logger;
+        this.statsCollector = deps.statsCollector;
         this.windowMs = deps.config.windowSec * 1000;
         this.startCleanup();
     }
 
-    checkLimit(ip: string): boolean {
+    checkLimit(ip: string): CheckLimitResult {
         const now = Date.now();
         const entry = this.limits.get(ip);
+
+        this.statsCollector.emit({ type: "rate_limit_hit", ip });
 
         if (!entry || now >= entry.resetAt) {
             this.limits.set(ip, {
                 count: 1,
                 resetAt: now + this.windowMs,
             });
-            return true;
+            return { allowed: true, ip, currentCount: 1 };
         }
 
         entry.count++;
 
         if (entry.count > this.config.maxConnections) {
-            this.logger.warn({ ip, count: entry.count, limit: this.config.maxConnections }, "Rate limit exceeded");
-            return false;
+            this.statsCollector.emit({ type: "rate_limit_blocked", ip });
+            return {
+                allowed: false,
+                ip,
+                currentCount: entry.count,
+                limit: this.config.maxConnections,
+            };
         }
 
-        return true;
+        return { allowed: true, ip, currentCount: entry.count };
     }
 
     stop(): void {
@@ -66,7 +77,7 @@ export class RateLimiter {
         }
     }
 
-    getStats(): RateLimiterStats {
+    getInfo(): RateLimiterInfo {
         return {
             trackedIPs: this.limits.size,
             maxConnections: this.config.maxConnections,
@@ -74,29 +85,24 @@ export class RateLimiter {
         };
     }
 
-    private startCleanup(): void {
-        this.cleanupInterval = setInterval(() => {
-            this.cleanup();
-        }, CLEANUP_INTERVAL_MS);
-    }
-
-    private cleanup(): void {
+    cleanup(): { entriesRemoved: number; remainingEntries: number } {
         const now = Date.now();
-        let cleaned = 0;
+        let entriesRemoved = 0;
 
         for (const [ip, entry] of this.limits) {
             if (now >= entry.resetAt) {
                 this.limits.delete(ip);
-                cleaned++;
+                entriesRemoved++;
             }
         }
 
-        if (cleaned > 0) {
-            this.logger.debug(
-                { entriesRemoved: cleaned, remainingEntries: this.limits.size },
-                "Rate limiter cleanup completed",
-            );
-        }
+        return { entriesRemoved, remainingEntries: this.limits.size };
+    }
+
+    private startCleanup(): void {
+        this.cleanupInterval = setInterval(() => {
+            this.cleanup();
+        }, CLEANUP_INTERVAL_MS);
     }
 }
 

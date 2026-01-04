@@ -1,11 +1,11 @@
 import type { z } from "zod";
 import type {
     ackMessageSchema,
+    connectionMessageSchema,
+    connectionSchema,
     controlMessageSchema,
     dataMessageSchema,
     errorMessageSchema,
-    peerMessageSchema,
-    peerSchema,
     readyMessageSchema,
 } from "@/protocol/messages";
 
@@ -14,8 +14,8 @@ export type DataMessage = z.infer<typeof dataMessageSchema>;
 export type AckMessage = z.infer<typeof ackMessageSchema>;
 
 export type ReadyMessage = z.infer<typeof readyMessageSchema>;
-export type PeerMessage = z.infer<typeof peerMessageSchema>;
+export type ConnectionMessage = z.infer<typeof connectionMessageSchema>;
 export type ErrorMessage = z.infer<typeof errorMessageSchema>;
 
-export type Peer = z.infer<typeof peerSchema>;
-export type CRSPMessage = ControlMessage | DataMessage | AckMessage | ReadyMessage | PeerMessage | ErrorMessage;
+export type Connection = z.infer<typeof connectionSchema>;
+export type CRSPMessage = ControlMessage | DataMessage | AckMessage | ReadyMessage | ConnectionMessage | ErrorMessage;

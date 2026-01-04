@@ -47,11 +47,3 @@ export function gracefulShutdown(signal: string, server: AppServer): void {
         process.exit(1);
     });
 }
-
-export function setupShutdownHandlers(server: AppServer): void {
-    const handler = (signal: string) => () => gracefulShutdown(signal, server);
-
-    process.on("SIGINT", handler("SIGINT"));
-    process.on("SIGTERM", handler("SIGTERM"));
-    process.on("SIGBREAK", handler("SIGBREAK"));
-}

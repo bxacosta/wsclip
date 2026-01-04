@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ContentType, ErrorCode, MessageType, PeerEventType } from "@/protocol/types/enums.ts";
+import { ConnectionEventType, ContentType, ErrorCode, MessageType } from "@/protocol/types/enums.ts";
 
 const headerSchema = z.strictObject({
     type: z.enum(MessageType),
@@ -42,7 +42,7 @@ export const ackMessageSchema = z.object({
     }),
 });
 
-export const peerSchema = z.strictObject({
+export const connectionSchema = z.strictObject({
     id: z.string().min(1),
     address: z.string().min(1),
     connectedAt: z.iso.datetime(),
@@ -51,17 +51,17 @@ export const peerSchema = z.strictObject({
 export const readyMessageSchema = z.object({
     header: headerSchema.extend({ type: z.literal(MessageType.READY) }),
     payload: z.strictObject({
-        peerId: z.string(),
-        channelId: z.string(),
-        peer: peerSchema.nullable(),
+        connectionId: z.string(),
+        sessionId: z.string(),
+        otherConnection: connectionSchema.nullable(),
     }),
 });
 
-export const peerMessageSchema = z.object({
-    header: headerSchema.extend({ type: z.literal(MessageType.PEER) }),
+export const connectionMessageSchema = z.object({
+    header: headerSchema.extend({ type: z.literal(MessageType.CONNECTION) }),
     payload: z.strictObject({
-        peerId: z.string(),
-        event: z.enum([PeerEventType.JOINED, PeerEventType.LEFT]),
+        connectionId: z.string(),
+        event: z.enum([ConnectionEventType.JOINED, ConnectionEventType.LEFT]),
     }),
 });
 

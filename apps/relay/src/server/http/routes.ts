@@ -2,7 +2,12 @@ import { ErrorCode } from "@/protocol";
 import type { AppServer } from "@/server";
 import { getContext, type WebSocketData } from "@/server/core";
 import { buildHttpError, buildHttpErrorRaw } from "@/server/errors";
-import { extractBearerToken, extractConnectionParams, validatePeerId, validateSessionId } from "@/server/http/utils";
+import {
+    extractBearerToken,
+    extractConnectionParams,
+    validateConnectionId,
+    validateSessionId,
+} from "@/server/http/utils";
 
 interface HealthResponse {
     status: "ok";
@@ -13,21 +18,26 @@ export function handleUpgrade(request: Request, server: AppServer): Response | u
     const { logger, config, rateLimiter } = getContext();
 
     const ip = server.requestIP(request)?.address ?? "unknown";
-    if (!rateLimiter.checkLimit(ip)) {
-        logger.warn({ ip }, "Connection rejected due to rate limit");
+    const rateLimitResult = rateLimiter.checkLimit(ip);
+
+    if (!rateLimitResult.allowed) {
+        logger.warn(
+            { ip, count: rateLimitResult.currentCount, limit: rateLimitResult.limit },
+            "Connection rejected due to rate limit",
+        );
         return buildHttpError(ErrorCode.RATE_LIMIT_EXCEEDED);
     }
 
-    const { sessionId, peerId, secret } = extractConnectionParams(request);
+    const { sessionId, connectionId, secret } = extractConnectionParams(request);
 
     if (!validateSessionId(sessionId)) {
         logger.warn({ sessionId }, "Invalid session ID");
-        return buildHttpError(ErrorCode.INVALID_CHANNEL_ID);
+        return buildHttpError(ErrorCode.INVALID_SESSION_ID);
     }
 
-    if (!validatePeerId(peerId)) {
-        logger.warn({ peerId }, "Invalid peer ID");
-        return buildHttpError(ErrorCode.INVALID_PEER_ID);
+    if (!validateConnectionId(connectionId)) {
+        logger.warn({ connectionId }, "Invalid connection ID");
+        return buildHttpError(ErrorCode.INVALID_CONNECTION_ID);
     }
 
     if (secret !== config.serverSecret) {
@@ -37,8 +47,8 @@ export function handleUpgrade(request: Request, server: AppServer): Response | u
 
     const data: WebSocketData = {
         sessionId,
-        client: {
-            id: peerId,
+        connection: {
+            id: connectionId,
             address: ip,
             connectedAt: new Date().toISOString(),
         },
@@ -74,7 +84,7 @@ export function handleStats(request: Request): Response {
 
     const sessionInfo = sessionManager.getSessionInfo();
     const aggregatedStats = statsCollector.getAggregatedStats(sessionInfo);
-    const rateLimitInfo = rateLimiter.getStats();
+    const rateLimiterInfo = rateLimiter.getInfo();
 
     const memUsage = process.memoryUsage();
 
@@ -84,6 +94,13 @@ export function handleStats(request: Request): Response {
         activeConnections: aggregatedStats.sessions.activeConnections,
         messagesRelayed: aggregatedStats.relay.messagesRelayed,
         bytesTransferred: aggregatedStats.relay.bytesTransferred,
+        rateLimit: {
+            hits: aggregatedStats.rateLimit.hits,
+            blocked: aggregatedStats.rateLimit.blocked,
+            trackedIPs: rateLimiterInfo.trackedIPs,
+            maxConnections: rateLimiterInfo.maxConnections,
+            windowMs: rateLimiterInfo.windowMs,
+        },
         oldestConnectionAge: aggregatedStats.oldestConnectionAge,
         newestConnectionAge: aggregatedStats.newestConnectionAge,
         memoryUsage: {
@@ -92,7 +109,6 @@ export function handleStats(request: Request): Response {
             heapUsed: Math.floor(memUsage.heapUsed / 1024 / 1024),
             external: Math.floor(memUsage.external / 1024 / 1024),
         },
-        rateLimiting: rateLimitInfo,
         uptime: Math.floor(process.uptime()),
         timestamp: new Date().toISOString(),
     };

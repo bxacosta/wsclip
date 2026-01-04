@@ -43,9 +43,9 @@
             <div class="space-y-2.5">
                 <input id="serverUrl" type="text" value="ws://localhost:3000" placeholder="Server URL"
                        class="w-full px-3 py-2 bg-neutral-950 border border-neutral-800 rounded text-sm placeholder:text-neutral-500 focus:outline-none focus:border-neutral-700 focus:bg-neutral-900 transition-all">
-                <input id="channelId" type="text" placeholder="Channel ID" maxlength="8" value="TEST1234"
+                <input id="sessionId" type="text" placeholder="Session ID" maxlength="8" value="TEST1234"
                        class="w-full px-3 py-2 bg-neutral-950 border border-neutral-800 rounded text-sm placeholder:text-neutral-500 focus:outline-none focus:border-neutral-700 focus:bg-neutral-900 transition-all uppercase">
-                <input id="peerId" type="text" placeholder="Peer ID" value="peer-1"
+                <input id="connectionId" type="text" placeholder="Connection ID" value="dev-1"
                        class="w-full px-3 py-2 bg-neutral-950 border border-neutral-800 rounded text-sm placeholder:text-neutral-500 focus:outline-none focus:border-neutral-700 focus:bg-neutral-900 transition-all">
                 <input id="secret" type="text" placeholder="Secret" value="dev-secret-key-2025"
                        class="w-full px-3 py-2 bg-neutral-950 border border-neutral-800 rounded text-sm placeholder:text-neutral-500 focus:outline-none focus:border-neutral-700 focus:bg-neutral-900 transition-all">
@@ -65,16 +65,16 @@
                     <dd id="statusConnection" class="font-medium text-neutral-500 text-sm">Disconnected</dd>
                 </div>
                 <div class="flex items-center justify-between">
-                    <dt class="text-neutral-300 text-sm">Channel</dt>
-                    <dd id="statusChannel" class="font-medium text-neutral-500 text-sm">-</dd>
+                    <dt class="text-neutral-300 text-sm">Session</dt>
+                    <dd id="statusSession" class="font-medium text-neutral-500 text-sm">-</dd>
                 </div>
                 <div class="flex items-center justify-between">
-                    <dt class="text-neutral-300 text-sm">Peer ID</dt>
-                    <dd id="statusPeerId" class="font-medium text-neutral-500 text-sm">-</dd>
+                    <dt class="text-neutral-300 text-sm">Connection ID</dt>
+                    <dd id="statusConnectionId" class="font-medium text-neutral-500 text-sm">-</dd>
                 </div>
                 <div class="flex items-center justify-between">
-                    <dt class="text-neutral-300 text-sm">Peer</dt>
-                    <dd id="statusPeer" class="font-medium text-neutral-500 text-sm">-</dd>
+                    <dt class="text-neutral-300 text-sm">Other Connection</dt>
+                    <dd id="statusOtherConnection" class="font-medium text-neutral-500 text-sm">-</dd>
                 </div>
             </dl>
         </section>
@@ -151,7 +151,7 @@
     // CONFIGURATION
     // ============================================================================
     const CONFIG = {
-        CHANNEL_ID_PATTERN: /^[a-zA-Z0-9]{8}$/,
+        SESSION_ID_PATTERN: /^[a-zA-Z0-9]{8}$/,
         TIME_FORMAT: { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3 },
         WS_CLOSE_NORMAL: 1000
     };
@@ -159,7 +159,7 @@
     // Badge styles using Tailwind classes only
     const BADGE_STYLES = {
         ready:   { bg: 'bg-blue-500/15',    text: 'text-blue-400',    border: 'border-blue-500/30' },
-        peer:    { bg: 'bg-violet-500/15',  text: 'text-violet-400',  border: 'border-violet-500/30' },
+        connection: { bg: 'bg-violet-500/15',  text: 'text-violet-400',  border: 'border-violet-500/30' },
         error:   { bg: 'bg-red-500/15',     text: 'text-red-400',     border: 'border-red-500/30' },
         data:    { bg: 'bg-green-500/15',   text: 'text-green-400',   border: 'border-green-500/30' },
         ack:     { bg: 'bg-teal-500/15',    text: 'text-teal-400',    border: 'border-teal-500/30' },
@@ -175,7 +175,7 @@
     };
 
     // Message types that come from server
-    const SERVER_MESSAGE_TYPES = ['ready', 'peer', 'error'];
+    const SERVER_MESSAGE_TYPES = ['ready', 'connection', 'error'];
 
     // ============================================================================
     // DOM UTILITIES
@@ -184,14 +184,14 @@
 
     const dom = {
         serverUrl: $('serverUrl'),
-        channelId: $('channelId'),
-        peerId: $('peerId'),
+        sessionId: $('sessionId'),
+        connectionId: $('connectionId'),
         secret: $('secret'),
         connectBtn: $('connectBtn'),
         statusConnection: $('statusConnection'),
-        statusChannel: $('statusChannel'),
-        statusPeerId: $('statusPeerId'),
-        statusPeer: $('statusPeer'),
+        statusSession: $('statusSession'),
+        statusConnectionId: $('statusConnectionId'),
+        statusOtherConnection: $('statusOtherConnection'),
         console: $('console'),
         autoscroll: $('autoscroll'),
         clearBtn: $('clearBtn'),
@@ -247,9 +247,9 @@
     const state = {
         ws: null,
         connected: false,
-        channelId: null,
-        peerId: null,
-        peer: null,
+        sessionId: null,
+        connectionId: null,
+        otherConnection: null,
         stats: createEmptyStats(),
         timerId: null
     };
@@ -267,9 +267,9 @@
     function resetState() {
         Object.assign(state, {
             connected: false,
-            channelId: null,
-            peerId: null,
-            peer: null,
+            sessionId: null,
+            connectionId: null,
+            otherConnection: null,
             stats: createEmptyStats()
         });
 
@@ -399,18 +399,18 @@
         setElementState(dom.statusConnection, connected ? 'Connected' : 'Disconnected', connected ? 'text-emerald-500' : 'text-neutral-500');
 
         if (!connected) {
-            [dom.statusChannel, dom.statusPeerId, dom.statusPeer].forEach(resetElement);
+            [dom.statusSession, dom.statusConnectionId, dom.statusOtherConnection].forEach(resetElement);
             resetStatsUI();
         }
     }
 
-    function updatePeerUI(peer) {
-        if (peer) {
-            setElementState(dom.statusPeer, peer.id || peer.peerId || peer, 'text-white');
+    function updateOtherConnectionUI(otherConnection) {
+        if (otherConnection) {
+            setElementState(dom.statusOtherConnection, otherConnection.id || otherConnection.connectionId || otherConnection, 'text-white');
         } else if (state.connected) {
-            setElementState(dom.statusPeer, 'Waiting...', 'text-amber-500');
+            setElementState(dom.statusOtherConnection, 'Waiting...', 'text-amber-500');
         } else {
-            resetElement(dom.statusPeer);
+            resetElement(dom.statusOtherConnection);
         }
     }
 
@@ -420,22 +420,22 @@
     function getConnectionParams() {
         return {
             serverUrl: dom.serverUrl.value.trim(),
-            channelId: dom.channelId.value.trim(),
-            peerId: dom.peerId.value.trim(),
+            sessionId: dom.sessionId.value.trim(),
+            connectionId: dom.connectionId.value.trim(),
             secret: dom.secret.value.trim()
         };
     }
 
     function validateParams(params) {
-        const { serverUrl, channelId, peerId, secret } = params;
+        const { serverUrl, sessionId, connectionId, secret } = params;
 
-        if (!serverUrl || !secret || !channelId || !peerId) {
+        if (!serverUrl || !secret || !sessionId || !connectionId) {
             log('error', 'All fields are required');
             return false;
         }
 
-        if (!CONFIG.CHANNEL_ID_PATTERN.test(channelId)) {
-            log('error', 'Channel ID must be exactly 8 alphanumeric characters');
+        if (!CONFIG.SESSION_ID_PATTERN.test(sessionId)) {
+            log('error', 'Session ID must be exactly 8 alphanumeric characters');
             return false;
         }
 
@@ -469,7 +469,7 @@
     // ============================================================================
     const messageHandlers = {
         ready(msg, payload) {
-            log('ready', `Connected to channel: ${payload.channelId}`, null, msg);
+            log('ready', `Connected to session: ${payload.sessionId}`, null, msg);
 
             state.connected = true;
             state.stats.connectedAt = Date.now();
@@ -478,23 +478,23 @@
             updateConnectionUI(true);
             updateStatsUI();
 
-            if (payload.peer) {
-                state.peer = payload.peer;
-                updatePeerUI(payload.peer);
-                log('client', `Peer already connected: ${payload.peer.id}`);
+            if (payload.otherConnection) {
+                state.otherConnection = payload.otherConnection;
+                updateOtherConnectionUI(payload.otherConnection);
+                log('client', `Other connection already present: ${payload.otherConnection.id}`);
             } else {
-                log('client', 'Waiting for peer to join...');
-                updatePeerUI(null);
+                log('client', 'Waiting for another connection to join...');
+                updateOtherConnectionUI(null);
             }
         },
 
-        peer(msg, payload) {
-            const { event, peerId } = payload;
+        connection(msg, payload) {
+            const { event, connectionId } = payload;
             const isJoin = event === 'joined';
 
-            log('peer', `Peer ${event}: ${peerId}`, null, msg);
-            state.peer = isJoin ? { peerId } : null;
-            updatePeerUI(state.peer);
+            log('connection', `Connection ${event}: ${connectionId}`, null, msg);
+            state.otherConnection = isJoin ? { connectionId } : null;
+            updateOtherConnectionUI(state.otherConnection);
         },
 
         data(msg, payload) {
@@ -535,8 +535,8 @@
         }
     }
 
-    function buildWebSocketUrl({ serverUrl, channelId, peerId, secret }) {
-        const params = new URLSearchParams({ channelId, peerId, secret });
+    function buildWebSocketUrl({ serverUrl, sessionId, connectionId, secret }) {
+        const params = new URLSearchParams({ sessionId, connectionId, secret });
         return `${serverUrl}/ws?${params}`;
     }
 
@@ -545,10 +545,10 @@
 
         ws.onopen = () => {
             log('client', 'WebSocket connected, waiting for READY message...');
-            state.channelId = params.channelId;
-            state.peerId = params.peerId;
-            setElementState(dom.statusChannel, params.channelId, 'text-white');
-            setElementState(dom.statusPeerId, params.peerId, 'text-white');
+            state.sessionId = params.sessionId;
+            state.connectionId = params.connectionId;
+            setElementState(dom.statusSession, params.sessionId, 'text-white');
+            setElementState(dom.statusConnectionId, params.connectionId, 'text-white');
         };
 
         ws.onmessage = ({ data }) => {
@@ -562,7 +562,7 @@
         ws.onerror = ({ type }) => log('error', `WebSocket error: ${type}`);
 
         ws.onclose = ({ code, reason }) => {
-            const wasConnecting = !state.connected && state.channelId;
+            const wasConnecting = !state.connected && state.sessionId;
             const message = reason || 'No reason provided';
 
             log(wasConnecting ? 'error' : 'client',
@@ -579,7 +579,7 @@
         if (!validateParams(params)) return;
 
         log('client', `Connecting to ${params.serverUrl}...`);
-        log('client', `Channel: ${params.channelId} | Peer: ${params.peerId}`);
+        log('client', `Session: ${params.sessionId} | Connection: ${params.connectionId}`);
 
         try {
             state.ws = new WebSocket(buildWebSocketUrl(params));

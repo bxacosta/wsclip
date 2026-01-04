@@ -1,5 +1,5 @@
 import type { ServerWebSocket } from "bun";
-import type { Peer } from "@/protocol";
+import type { Connection } from "@/protocol";
 
 export const LogLevel = {
     DEBUG: "debug",
@@ -29,18 +29,18 @@ export type Config = Readonly<{
     rateLimitMax: number;
     rateLimitWindowSec: number;
     maxSessions: number;
-    peersPerSession: number;
+    connectionsPerSession: number;
 }>;
 
 export interface ConnectionParams {
     sessionId: string;
-    peerId: string;
+    connectionId: string;
     secret: string;
 }
 
 export interface WebSocketData {
     sessionId: string;
-    client: Peer;
+    connection: Connection;
 }
 
 export type AppWebSocket = ServerWebSocket<WebSocketData>;

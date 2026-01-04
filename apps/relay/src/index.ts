@@ -1,9 +1,13 @@
 import { startServer } from "@/server";
 import { initContext } from "@/server/core/context.ts";
-import { setupShutdownHandlers } from "@/shutdown";
+import { gracefulShutdown } from "@/shutdown";
 
 initContext();
 
 const server = startServer();
 
-setupShutdownHandlers(server);
+const handler = (signal: string) => () => gracefulShutdown(signal, server);
+
+process.on("SIGINT", handler("SIGINT"));
+process.on("SIGTERM", handler("SIGTERM"));
+process.on("SIGBREAK", handler("SIGBREAK"));

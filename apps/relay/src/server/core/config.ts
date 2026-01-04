@@ -11,7 +11,7 @@ const DEFAULTS: Omit<Config, "serverSecret"> = {
     rateLimitWindowSec: 60,
     compression: false,
     maxSessions: 4,
-    peersPerSession: 2,
+    connectionsPerSession: 2,
 } as const;
 
 const envSchema = z.object({
@@ -42,7 +42,7 @@ export function createConfig(): Config {
             rateLimitMax: data.RATE_LIMIT_MAX,
             rateLimitWindowSec: data.RATE_LIMIT_WINDOW_SEC,
             maxSessions: data.MAX_SESSIONS,
-            peersPerSession: DEFAULTS.peersPerSession,
+            connectionsPerSession: DEFAULTS.connectionsPerSession,
         });
     }
 
