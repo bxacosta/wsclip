@@ -1,8 +1,8 @@
 import { ErrorCode } from "@/protocol";
+import type { AppServer } from "@/server";
 import { getContext, type WebSocketData } from "@/server/core";
 import { buildHttpError, buildHttpErrorRaw } from "@/server/errors";
-import { extractBearerToken, extractConnectionParams, validateChannelId, validatePeerId } from "@/server/http/utils.ts";
-import type { AppServer } from "@/server.ts";
+import { extractBearerToken, extractConnectionParams, validatePeerId, validateSessionId } from "@/server/http/utils";
 
 interface HealthResponse {
     status: "ok";
@@ -18,10 +18,10 @@ export function handleUpgrade(request: Request, server: AppServer): Response | u
         return buildHttpError(ErrorCode.RATE_LIMIT_EXCEEDED);
     }
 
-    const { channelId, peerId, secret } = extractConnectionParams(request);
+    const { sessionId, peerId, secret } = extractConnectionParams(request);
 
-    if (!validateChannelId(channelId)) {
-        logger.warn({ channelId }, "Invalid channel ID");
+    if (!validateSessionId(sessionId)) {
+        logger.warn({ sessionId }, "Invalid session ID");
         return buildHttpError(ErrorCode.INVALID_CHANNEL_ID);
     }
 
@@ -36,7 +36,7 @@ export function handleUpgrade(request: Request, server: AppServer): Response | u
     }
 
     const data: WebSocketData = {
-        channelId: channelId,
+        sessionId,
         client: {
             id: peerId,
             address: ip,
@@ -65,26 +65,34 @@ export function handleHealth(): Response {
 }
 
 export function handleStats(request: Request): Response {
-    const { logger, config, channelManager, rateLimiter } = getContext();
+    const { logger, config, sessionManager, rateLimiter, statsCollector } = getContext();
 
     const token = extractBearerToken(request);
     if (token !== config.serverSecret) {
         return buildHttpError(ErrorCode.INVALID_SECRET);
     }
 
-    const rateLimitStats = rateLimiter.getStats();
+    const sessionInfo = sessionManager.getSessionInfo();
+    const aggregatedStats = statsCollector.getAggregatedStats(sessionInfo);
+    const rateLimitInfo = rateLimiter.getStats();
 
     const memUsage = process.memoryUsage();
 
     const response = {
-        ...channelManager.getStats(),
+        activeSessions: aggregatedStats.sessions.activeSessions,
+        maxSessions: config.maxSessions,
+        activeConnections: aggregatedStats.sessions.activeConnections,
+        messagesRelayed: aggregatedStats.relay.messagesRelayed,
+        bytesTransferred: aggregatedStats.relay.bytesTransferred,
+        oldestConnectionAge: aggregatedStats.oldestConnectionAge,
+        newestConnectionAge: aggregatedStats.newestConnectionAge,
         memoryUsage: {
             rss: Math.floor(memUsage.rss / 1024 / 1024),
             heapTotal: Math.floor(memUsage.heapTotal / 1024 / 1024),
             heapUsed: Math.floor(memUsage.heapUsed / 1024 / 1024),
             external: Math.floor(memUsage.external / 1024 / 1024),
         },
-        rateLimiting: rateLimitStats,
+        rateLimiting: rateLimitInfo,
         uptime: Math.floor(process.uptime()),
         timestamp: new Date().toISOString(),
     };

@@ -13,7 +13,8 @@ export function extractConnectionParams(request: Request): ConnectionParams {
     const url = new URL(request.url);
 
     return {
-        channelId: extractSearchParam(url, "channelId"),
+        // Note: URL param is "channelId" (external API), mapped to "sessionId" internally
+        sessionId: extractSearchParam(url, "channelId"),
         peerId: extractSearchParam(url, "peerId"),
         secret: extractBearerToken(request) || extractSearchParam(url, "secret"),
     };
@@ -23,8 +24,8 @@ function extractSearchParam(url: URL, param: string): string {
     return url.searchParams.get(param)?.trim() ?? "";
 }
 
-export function validateChannelId(channel: string): boolean {
-    return /^[a-zA-Z0-9]{8}$/.test(channel);
+export function validateSessionId(sessionId: string): boolean {
+    return /^[a-zA-Z0-9]{8}$/.test(sessionId);
 }
 
 export function validatePeerId(peerId: string): boolean {

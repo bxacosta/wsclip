@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { type Config, Environment, LogLevel } from "@/server/core/types.ts";
+import { type Config, Environment, LogLevel } from "@/server/core/types";
 
 const DEFAULTS: Omit<Config, "serverSecret"> = {
     port: 3000,
@@ -10,8 +10,8 @@ const DEFAULTS: Omit<Config, "serverSecret"> = {
     rateLimitMax: 10,
     rateLimitWindowSec: 60,
     compression: false,
-    maxChannels: 4,
-    peersPerChannel: 2,
+    maxSessions: 4,
+    peersPerSession: 2,
 } as const;
 
 const envSchema = z.object({
@@ -24,7 +24,7 @@ const envSchema = z.object({
     RATE_LIMIT_MAX: z.coerce.number().default(DEFAULTS.rateLimitMax),
     RATE_LIMIT_WINDOW_SEC: z.coerce.number().default(DEFAULTS.rateLimitWindowSec),
     COMPRESSION: z.coerce.boolean().default(DEFAULTS.compression),
-    MAX_CHANNELS: z.coerce.number().default(DEFAULTS.maxChannels),
+    MAX_SESSIONS: z.coerce.number().default(DEFAULTS.maxSessions),
 });
 
 export function createConfig(): Config {
@@ -41,8 +41,8 @@ export function createConfig(): Config {
             compression: data.COMPRESSION,
             rateLimitMax: data.RATE_LIMIT_MAX,
             rateLimitWindowSec: data.RATE_LIMIT_WINDOW_SEC,
-            maxChannels: data.MAX_CHANNELS,
-            peersPerChannel: DEFAULTS.peersPerChannel,
+            maxSessions: data.MAX_SESSIONS,
+            peersPerSession: DEFAULTS.peersPerSession,
         });
     }
 

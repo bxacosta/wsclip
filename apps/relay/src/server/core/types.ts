@@ -28,18 +28,18 @@ export type Config = Readonly<{
     compression: boolean;
     rateLimitMax: number;
     rateLimitWindowSec: number;
-    maxChannels: number;
-    peersPerChannel: number;
+    maxSessions: number;
+    peersPerSession: number;
 }>;
 
 export interface ConnectionParams {
-    channelId: string;
+    sessionId: string;
     peerId: string;
     secret: string;
 }
 
 export interface WebSocketData {
-    channelId: string;
+    sessionId: string;
     client: Peer;
 }
 

@@ -1,15 +1,31 @@
+import type { AppServer } from "@/server";
 import { getContext } from "@/server/core";
-import { flushLogger } from "@/server/core/logger.ts";
-import type { AppServer } from "@/server.ts";
+import { flushLogger } from "@/server/core/logger";
 
 let isShuttingDown = false;
 
+const SHUTDOWN_CLOSE_CODE = 1001;
+const SHUTDOWN_REASON = "Server shutting down";
+
 async function performShutdown(signal: string, server: AppServer): Promise<void> {
-    const { logger, channelManager, rateLimiter } = getContext();
+    const { logger, sessionManager, rateLimiter } = getContext();
     logger.info({ signal }, "Shutdown initiated");
 
     try {
-        channelManager.close();
+        const closeResult = sessionManager.close();
+
+        logger.info(
+            { closedCount: closeResult.closedCount, code: SHUTDOWN_CLOSE_CODE, reason: SHUTDOWN_REASON },
+            "All connections closed",
+        );
+
+        for (const error of closeResult.errors) {
+            logger.error(
+                { err: error.error, connectionId: error.connectionId, sessionId: error.sessionId },
+                "Connection close failed",
+            );
+        }
+
         rateLimiter.stop();
         await server.stop();
         await flushLogger(logger);

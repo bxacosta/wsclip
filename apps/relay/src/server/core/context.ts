@@ -1,14 +1,16 @@
-import { type ChannelManager, createChannelManager } from "@/server/channel/manager.ts";
-import { createConfig } from "@/server/core/config.ts";
-import { createLogger, type Logger } from "@/server/core/logger.ts";
-import type { Config } from "@/server/core/types.ts";
+import { createConfig } from "@/server/core/config";
+import { createLogger, type Logger } from "@/server/core/logger";
+import type { Config } from "@/server/core/types";
 import { createRateLimiter, type RateLimiter } from "@/server/security";
+import { createSessionManager, type SessionManager } from "@/server/session/manager";
+import { createStatsCollector, type StatsCollector } from "@/server/stats";
 
 interface AppContext {
     config: Config;
     logger: Logger;
-    channelManager: ChannelManager;
+    sessionManager: SessionManager;
     rateLimiter: RateLimiter;
+    statsCollector: StatsCollector;
 }
 
 let context: AppContext | null = null;
@@ -18,6 +20,7 @@ export function initContext(): AppContext {
 
     const config = createConfig();
     const logger = createLogger(config);
+    const statsCollector = createStatsCollector();
 
     const rateLimiter = createRateLimiter({
         config: {
@@ -27,15 +30,15 @@ export function initContext(): AppContext {
         logger,
     });
 
-    const channelManager = createChannelManager({
+    const sessionManager = createSessionManager({
         config: {
-            maxChannels: config.maxChannels,
-            connectionsPerChannel: config.peersPerChannel,
+            maxSessions: config.maxSessions,
+            connectionsPerSession: config.peersPerSession,
         },
-        logger,
+        statsCollector,
     });
 
-    context = Object.freeze({ config, logger, rateLimiter, channelManager });
+    context = Object.freeze({ config, logger, rateLimiter, sessionManager, statsCollector });
     return context;
 }
 

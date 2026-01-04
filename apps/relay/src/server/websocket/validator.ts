@@ -1,4 +1,3 @@
-import type { Logger } from "pino";
 import { ackMessageSchema, controlMessageSchema, dataMessageSchema } from "@/protocol/messages/schemas";
 import { parseMessage } from "@/protocol/messages/utils";
 import type { AckMessage, ControlMessage, DataMessage } from "@/protocol/types";
@@ -24,19 +23,16 @@ function getMessageType(parsed: unknown): string | undefined {
     return undefined;
 }
 
-export function validateMessage(raw: string, maxSize: number, logger: Logger): ValidationResult {
+export function validateMessage(raw: string, maxSize: number): ValidationResult {
     const size = Buffer.byteLength(raw, "utf-8");
-    logger.debug({ sizeBytes: size }, "Message received");
 
     if (size > maxSize) {
-        logger.warn({ sizeBytes: size, maxSize }, "Message too large");
         return fail(ErrorCode.MESSAGE_TOO_LARGE, `Message size ${size} exceeds maximum ${maxSize} bytes`);
     }
 
     const parsed = parseMessage(raw);
 
     if (parsed === null) {
-        logger.warn("Invalid JSON");
         return fail(ErrorCode.INVALID_MESSAGE, "Invalid JSON format");
     }
 
@@ -45,7 +41,6 @@ export function validateMessage(raw: string, maxSize: number, logger: Logger): V
     if (type === MessageType.DATA) {
         const result = dataMessageSchema.safeParse(parsed);
         if (!result.success) {
-            logger.warn({ error: result.error.issues[0]?.message }, "Invalid DATA message");
             return fail(ErrorCode.INVALID_MESSAGE, result.error.issues[0]?.message ?? "Invalid DATA message");
         }
         return { valid: true, data: result.data };
@@ -54,7 +49,6 @@ export function validateMessage(raw: string, maxSize: number, logger: Logger): V
     if (type === MessageType.ACK) {
         const result = ackMessageSchema.safeParse(parsed);
         if (!result.success) {
-            logger.warn({ error: result.error.issues[0]?.message }, "Invalid ACK message");
             return fail(ErrorCode.INVALID_MESSAGE, result.error.issues[0]?.message ?? "Invalid ACK message");
         }
         return { valid: true, data: result.data };
@@ -63,12 +57,10 @@ export function validateMessage(raw: string, maxSize: number, logger: Logger): V
     if (type === MessageType.CONTROL) {
         const result = controlMessageSchema.safeParse(parsed);
         if (!result.success) {
-            logger.warn({ error: result.error.issues[0]?.message }, "Invalid CONTROL message");
             return fail(ErrorCode.INVALID_MESSAGE, result.error.issues[0]?.message ?? "Invalid CONTROL message");
         }
         return { valid: true, data: result.data };
     }
 
-    logger.warn({ type }, "Unknown message type");
     return fail(ErrorCode.INVALID_MESSAGE, `Unknown message type: ${type}`);
 }
