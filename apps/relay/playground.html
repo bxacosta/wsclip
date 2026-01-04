@@ -478,10 +478,10 @@
             updateConnectionUI(true);
             updateStatsUI();
 
-            if (payload.otherConnection) {
-                state.otherConnection = payload.otherConnection;
-                updateOtherConnectionUI(payload.otherConnection);
-                log('client', `Other connection already present: ${payload.otherConnection.id}`);
+            if (payload.otherConnections && payload.otherConnections.length > 0) {
+                state.otherConnection = payload.otherConnections[0];
+                updateOtherConnectionUI(state.otherConnection);
+                log('client', `Other connection already present: ${state.otherConnection.id}`);
             } else {
                 log('client', 'Waiting for another connection to join...');
                 updateOtherConnectionUI(null);
@@ -489,11 +489,11 @@
         },
 
         connection(msg, payload) {
-            const { event, connectionId } = payload;
-            const isJoin = event === 'joined';
+            const { status, connectionId } = payload;
+            const isConnected = status === 'connected';
 
-            log('connection', `Connection ${event}: ${connectionId}`, null, msg);
-            state.otherConnection = isJoin ? { connectionId } : null;
+            log('connection', `Connection ${status}: ${connectionId}`, null, msg);
+            state.otherConnection = isConnected ? { id: connectionId } : null;
             updateOtherConnectionUI(state.otherConnection);
         },
 

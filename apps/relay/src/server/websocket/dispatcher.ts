@@ -20,17 +20,17 @@ export function sendReadyMessage(ws: AppWebSocket, otherConnections: Connection[
     ws.send(serializeMessage(readyMessage));
 }
 
-export function notifyOtherConnections(ws: AppWebSocket, eventType: ConnectionStatus, logger: Logger): void {
+export function notifyOtherConnections(ws: AppWebSocket, status: ConnectionStatus, logger: Logger): void {
     const { sessionManager } = getContext();
     const { sessionId, connection } = ws.data;
 
     const connections = sessionManager.getOtherConnections(sessionId, connection.id);
-    const connectionMessage = createConnectionMessage(connection.id, eventType);
+    const connectionMessage = createConnectionMessage(connection.id, status);
     const serialized = serializeMessage(connectionMessage);
 
     for (const sessionConnection of connections) {
         sessionConnection.ws.send(serialized);
-        logger.debug({ to: sessionConnection.info.id, event: eventType }, "Connection notification sent");
+        logger.debug({ to: sessionConnection.info.id, status }, "Connection notification sent");
     }
 }
 

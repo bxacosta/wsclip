@@ -65,7 +65,7 @@ export const connectionMessageSchema = z.object({
     header: headerSchema.extend({ type: z.literal(MessageType.CONNECTION) }),
     payload: z.strictObject({
         connectionId: z.string(),
-        event: z.enum([ConnectionStatus.CONNECTED, ConnectionStatus.DISCONNECTED]),
+        status: z.enum([ConnectionStatus.CONNECTED, ConnectionStatus.DISCONNECTED]),
     }),
 });
 

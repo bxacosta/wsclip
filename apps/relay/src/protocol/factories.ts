@@ -28,7 +28,7 @@ export function createReadyMessage(
     };
 }
 
-export function createConnectionMessage(connectionId: string, event: ConnectionStatus): ConnectionMessage {
+export function createConnectionMessage(connectionId: string, status: ConnectionStatus): ConnectionMessage {
     return {
         header: {
             type: MessageType.CONNECTION,
@@ -37,7 +37,7 @@ export function createConnectionMessage(connectionId: string, event: ConnectionS
         },
         payload: {
             connectionId,
-            event,
+            status,
         },
     };
 }
