@@ -6,8 +6,8 @@ import {
     type ControlMessage,
     type DataMessage,
     ErrorCode,
-} from "@/protocol/types";
-import { validateMessage } from "@/protocol/validators";
+    validateMessage,
+} from "@/protocol";
 import { type AppWebSocket, getContext, type WebSocketData } from "@/server/core";
 import { sendWebSocketError } from "@/server/errors";
 import type { RelayResultItem } from "@/server/session/types";

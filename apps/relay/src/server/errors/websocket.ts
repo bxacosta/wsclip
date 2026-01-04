@@ -1,5 +1,4 @@
-import { createErrorMessage, serializeMessage } from "@/protocol";
-import { ErrorCatalog, type ErrorCode } from "@/protocol/types";
+import { createErrorMessage, ErrorCatalog, type ErrorCode, serializeMessage } from "@/protocol";
 import type { AppWebSocket } from "@/server/core";
 
 export function sendWebSocketError(ws: AppWebSocket, errorCode: ErrorCode, customMessage?: string): void {

@@ -1,4 +1,4 @@
-import type { ErrorCode, Connection as ProtocolConnection } from "@/protocol/types";
+import type { ErrorCode, Connection as ProtocolConnection } from "@/protocol";
 import type { AppWebSocket } from "@/server/core";
 import type { StatsCollector } from "@/server/stats";
 

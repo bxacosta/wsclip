@@ -1,14 +1,13 @@
 // Core types and enums
 
 // Message factories
-export * from "./factories.ts";
-
-// Validation schemas
-export * from "./schemas.ts";
-export * from "./types.ts";
+export { createConnectionMessage, createErrorMessage, createReadyMessage } from "./factories.ts";
+export type { AckMessage, Connection, ControlMessage, CRSPMessage, DataMessage } from "./types.ts";
+export { ConnectionEventType, ErrorCatalog, ErrorCode, MessageType } from "./types.ts";
 
 // Utilities
-export * from "./utils.ts";
+export { serializeMessage } from "./utils.ts";
+export type { ValidatedMessage } from "./validators.ts";
 
 // Validators
-export * from "./validators.ts";
+export { validateMessage } from "./validators.ts";

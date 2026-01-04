@@ -1,8 +1,16 @@
 import type { Logger } from "pino";
-import { createConnectionMessage, createReadyMessage, serializeMessage } from "@/protocol";
-import type { AckMessage, Connection, ControlMessage, DataMessage } from "@/protocol/types";
-import { type ConnectionEventType, MessageType } from "@/protocol/types";
-import type { ValidatedMessage } from "@/protocol/validators";
+import {
+    type AckMessage,
+    type Connection,
+    type ConnectionEventType,
+    type ControlMessage,
+    createConnectionMessage,
+    createReadyMessage,
+    type DataMessage,
+    MessageType,
+    serializeMessage,
+    type ValidatedMessage,
+} from "@/protocol";
 import { type AppWebSocket, getContext } from "@/server/core";
 import { handleAckMessage, handleControlMessage, handleDataMessage } from "@/server/websocket/handler";
 
