@@ -2,8 +2,8 @@
 
 ## Critical Rules (NO EXCEPTIONS)
 
-- All code, comments, logs, and documentation must be written in English
-- NO emojis anywhere (code, comments, logs, errors, documentation)
+- All code, logs, and documentation must be written in English
+- NO emojis anywhere (code, logs, errors, documentation)
 - Use a formal, impersonal tone (third person)
 - Always use absolute imports with `@/` prefix (never relative imports like `../`)
 - Initialize logger lazily: call `getLogger()` inside functions, never at module level
