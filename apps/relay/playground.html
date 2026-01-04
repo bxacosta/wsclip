@@ -137,6 +137,13 @@
                 <textarea id="messageData" placeholder="Type a message... (Enter to send, Shift+Enter for new line)"
                           spellcheck="false"
                           class="flex-1 w-full px-3 py-2 bg-neutral-950 border border-neutral-800 rounded text-sm placeholder:text-neutral-500 focus:outline-none focus:border-neutral-700 focus:bg-neutral-900 transition-all resize-none leading-relaxed"></textarea>
+                <div class="space-y-1.5">
+                    <label class="text-xs text-neutral-400 uppercase tracking-wider font-semibold">Metadata (JSON)</label>
+                    <textarea id="messageMetadata" placeholder='{"key": "value"}'
+                              spellcheck="false"
+                              rows="2"
+                              class="w-full px-3 py-2 bg-neutral-950 border border-neutral-800 rounded text-sm placeholder:text-neutral-500 focus:outline-none focus:border-neutral-700 focus:bg-neutral-900 transition-all resize-none leading-relaxed"></textarea>
+                </div>
                 <button id="sendBtn" disabled
                         class="w-full px-3 py-2 rounded text-sm font-semibold transition-all bg-white text-black border border-white hover:bg-neutral-200 disabled:bg-neutral-800 disabled:text-neutral-500 disabled:border-neutral-800 disabled:cursor-not-allowed">
                     Send
@@ -202,6 +209,7 @@
         infoBytesReceived: $('infoBytesReceived'),
         contentType: $('contentType'),
         messageData: $('messageData'),
+        messageMetadata: $('messageMetadata'),
         sendBtn: $('sendBtn')
     };
 
@@ -456,8 +464,8 @@
         };
     }
 
-    function createDataMessage(contentType, data, size) {
-        return createMessage('data', { contentType, data, metadata: { size } });
+    function createDataMessage(contentType, data, metadata) {
+        return createMessage('data', { contentType, data, metadata });
     }
 
     function createAckMessage(messageId, size) {
@@ -599,6 +607,22 @@
     // ============================================================================
     // SEND MESSAGE
     // ============================================================================
+    function parseMetadata(metadataStr) {
+        if (!metadataStr.trim()) return {};
+
+        try {
+            const parsed = JSON.parse(metadataStr);
+            if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+                log('error', 'Metadata must be a JSON object');
+                return null;
+            }
+            return parsed;
+        } catch (e) {
+            log('error', `Invalid metadata JSON: ${e.message}`);
+            return null;
+        }
+    }
+
     function sendMessage() {
         if (state.ws?.readyState !== WebSocket.OPEN) {
             log('error', 'Not connected');
@@ -608,9 +632,13 @@
         const data = dom.messageData.value;
         if (!data.trim()) return;
 
+        const userMetadata = parseMetadata(dom.messageMetadata.value);
+        if (userMetadata === null) return;
+
         const contentType = dom.contentType.value;
         const messageSize = new Blob([data]).size;
-        const message = createDataMessage(contentType === 'text' ? 'text' : 'binary', data, messageSize);
+        const metadata = { size: messageSize, ...userMetadata };
+        const message = createDataMessage(contentType === 'text' ? 'text' : 'binary', data, metadata);
 
         sendToServer(message);
         trackMessage('sent', messageSize);
