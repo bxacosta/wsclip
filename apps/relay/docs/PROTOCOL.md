@@ -95,7 +95,7 @@ type MessageType =
 
         // System Messages (server -> client)
         | "ready"             // Connection confirmation
-        | "connection"        // Connection event (joined/left)
+        | "connection"        // Connection status change (connected/disconnected)
         | "error";            // Server error
 ```
 
@@ -317,7 +317,7 @@ server-generated.
 
 #### 4.3.2 CONNECTION Message (Server -> Client)
 
-**Purpose**: Notify events related to other connections (joining or leaving the session).
+**Purpose**: Notify status changes of other connections in the session.
 
 **Structure**:
 ```json
@@ -329,7 +329,7 @@ server-generated.
   },
   "payload": {
     "connectionId": "phone-android",
-    "event": "joined"
+    "status": "connected"
   }
 }
 ```
@@ -337,12 +337,11 @@ server-generated.
 **Payload Fields**:
 
 - `connectionId` (string): REQUIRED - Connection identifier
-- `event` (enum): REQUIRED
-  - `"joined"`: Connection joined the session
-  - `"left"`: Connection left the session
-- `metadata` (object): OPTIONAL - Event-specific information
+- `status` (enum): REQUIRED
+  - `"connected"`: Connection is now active in the session
+  - `"disconnected"`: Connection has left the session
 
-**Note**: When the second connection joins, only the first connection receives a `connection` message with `event: "joined"`. The
+**Note**: When the second connection joins, only the first connection receives a `connection` message with `status: "connected"`. The
 second connection receives the first connection's information in the `ready` message.
 
 #### 4.3.3 ERROR Message (Server -> Client)
@@ -453,7 +452,7 @@ implementation-specific, but the categories are defined by the protocol:
 6. Server -> Client A: CONNECTION message
    {
      "header": { "type": "connection", ... },
-     "payload": { "connectionId": "phone", "event": "joined", ... }
+     "payload": { "connectionId": "phone", "status": "connected", ... }
    }
 ```
 
@@ -505,7 +504,7 @@ implementation-specific, but the categories are defined by the protocol:
 17. Server -> Client A: CONNECTION message
     {
       "header": { "type": "connection", ... },
-      "payload": { "connectionId": "phone", "event": "left", ... }
+      "payload": { "connectionId": "phone", "status": "disconnected", ... }
     }
 ```
 
@@ -635,7 +634,7 @@ See implementation documentation for specific default values and configuration o
 - Consistent message structure
 - Unique message identification (via ID)
 - Transparent relay of extensible payloads
-- Session event notification (join/leave)
+- Session connection status notification (connect/disconnect)
 
 **CRSP does NOT guarantee**:
 - Message delivery (if other connection disconnected)

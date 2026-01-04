@@ -521,10 +521,12 @@ export function upgrade(req: Request, server: Server): boolean {
 
 ```typescript
 interface WebSocketData {
-    connectionId: string;
     sessionId: string;
-    connectedAt: Date;
-    metadata?: Metadata;
+    connection: {
+        id: string;
+        address: string;
+        connectedAt: string;
+    };
 }
 
 type TypedWebSocket = ServerWebSocket<WebSocketData>;
@@ -569,7 +571,7 @@ implementing sender-side flow control.
 
 **Test Client**: `playground.html` in project root
 
-1. Open `test-client.html` in multiple browser tabs/windows
+1. Open `playground.html` in multiple browser tabs/windows
 2. Use same session ID, different connection identifiers
 3. Test data/control message exchange
 4. Test disconnect/reconnect scenarios
@@ -594,30 +596,20 @@ implementing sender-side flow control.
   "activeConnections": 4,
   "messagesRelayed": 156,
   "bytesTransferred": 2457890,
+  "rateLimit": {
+    "hits": 5,
+    "blocked": 1,
+    "trackedIPs": 3,
+    "maxConnections": 10,
+    "windowMs": 60000
+  },
   "oldestConnectionAge": 3600,
   "newestConnectionAge": 120,
-  "errors": {
-    "INVALID_SECRET": 0,
-    "INVALID_SESSION_ID": 0,
-    "INVALID_CONNECTION_ID": 0,
-    "SESSION_FULL": 0,
-    "DUPLICATE_CONNECTION_ID": 0,
-    "INVALID_MESSAGE": 0,
-    "MESSAGE_TOO_LARGE": 0,
-    "NO_OTHER_CONNECTION": 0,
-    "RATE_LIMIT_EXCEEDED": 0,
-    "MAX_SESSIONS_REACHED": 0,
-    "INTERNAL_ERROR": 0
-  },
   "memoryUsage": {
     "rss": 45,
     "heapTotal": 12,
     "heapUsed": 8,
     "external": 1
-  },
-  "rateLimiting": {
-    "activeEntries": 3,
-    "blockedIps": 0
   },
   "uptime": 3600,
   "timestamp": "2025-12-28T10:00:00.000Z"

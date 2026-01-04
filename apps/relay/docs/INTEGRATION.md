@@ -8,16 +8,16 @@ all information needed to develop a client application.
 ### Connection
 
 ```
-ws://host:port/ws?channelId=<CHANNEL_ID>&peerId=<PEER_ID>&secret=<SECRET>
+ws://host:port/ws?sessionId=<SESSION_ID>&connectionId=<CONNECTION_ID>&secret=<SECRET>
 ```
 
 **Required Query Parameters**:
 
-| Parameter   | Description           | Validation                                        |
-|-------------|-----------------------|---------------------------------------------------|
-| `channelId` | Channel identifier    | Exactly 8 alphanumeric characters (a-z, A-Z, 0-9) |
-| `peerId`    | Peer identifier       | Non-empty string (whitespace trimmed)             |
-| `secret`    | Authentication secret | Must match server secret                          |
+| Parameter      | Description           | Validation                                        |
+|----------------|-----------------------|---------------------------------------------------|
+| `sessionId`    | Session identifier    | Exactly 8 alphanumeric characters (a-z, A-Z, 0-9) |
+| `connectionId` | Connection identifier | Non-empty string (whitespace trimmed)             |
+| `secret`       | Authentication secret | Must match server secret                          |
 
 **Alternative Authentication**:
 The secret can also be provided via HTTP header:
@@ -31,7 +31,7 @@ If both are provided, the Authorization header takes precedence.
 ### Connection Flow
 
 ```
-1. Client connects to: ws://host:port/ws?channelId=ABC12345&peerId=my-device&secret=xxx
+1. Client connects to: ws://host:port/ws?sessionId=ABC12345&connectionId=my-device&secret=xxx
 2. Server validates parameters during HTTP upgrade
 3. On success: WebSocket connection established
 4. Server sends READY message immediately
@@ -70,35 +70,25 @@ Authorization: Bearer <SECRET>
 **Response** (200 OK):
 ```json
 {
-  "activeChannels": 2,
-  "maxChannels": 4,
+  "activeSessions": 2,
+  "maxSessions": 4,
   "activeConnections": 3,
   "messagesRelayed": 150,
   "bytesTransferred": 45678,
+  "rateLimit": {
+    "hits": 5,
+    "blocked": 1,
+    "trackedIPs": 3,
+    "maxConnections": 10,
+    "windowMs": 60000
+  },
   "oldestConnectionAge": 3600,
   "newestConnectionAge": 120,
-  "errors": {
-    "INVALID_SECRET": 0,
-    "INVALID_CHANNEL": 1,
-    "INVALID_PEER_ID": 0,
-    "CHANNEL_FULL": 0,
-    "DUPLICATE_PEER_ID": 0,
-    "INVALID_MESSAGE": 2,
-    "MESSAGE_TOO_LARGE": 0,
-    "NO_PEER_CONNECTED": 5,
-    "RATE_LIMIT_EXCEEDED": 0,
-    "MAX_CHANNELS_REACHED": 0,
-    "INTERNAL_ERROR": 0
-  },
   "memoryUsage": {
     "rss": 45,
     "heapTotal": 20,
     "heapUsed": 15,
     "external": 1
-  },
-  "rateLimiting": {
-    "trackedIPs": 5,
-    "windowMs": 60000
   },
   "uptime": 7200,
   "timestamp": "2025-12-29T10:30:00.000Z"
@@ -136,11 +126,11 @@ All WebSocket messages use JSON with this structure:
 
 **Server to Client**:
 
-| Type       | Description                         |
-|------------|-------------------------------------|
-| `ready`    | Connection established successfully |
-| `peer`     | Peer joined or left the channel     |
-| `error`    | Error notification                  |
+| Type         | Description                                        |
+|--------------|----------------------------------------------------|
+| `ready`      | Connection established successfully                |
+| `connection` | Connection status changed (connected/disconnected) |
+| `error`      | Error notification                                 |
 
 ---
 
@@ -158,33 +148,32 @@ Sent immediately after successful WebSocket connection.
     "timestamp": "2025-12-29T10:30:00.000Z"
   },
   "payload": {
-    "peerId": "my-device",
-    "channelId": "ABC12345",
-    "peer": null
+    "connectionId": "my-device",
+    "sessionId": "ABC12345",
+    "otherConnection": null
   }
 }
 ```
 
 **Payload Fields**:
 
-| Field       | Type           | Description                          |
-|-------------|----------------|--------------------------------------|
-| `peerId`    | string         | Your peer identifier                 |
-| `channelId` | string         | Channel identifier                   |
-| `peer`      | object or null | Existing peer info, or null if alone |
+| Field             | Type           | Description                                |
+|-------------------|----------------|--------------------------------------------|
+| `connectionId`    | string         | Your connection identifier                 |
+| `sessionId`       | string         | Session identifier                         |
+| `otherConnection` | object or null | Existing connection info, or null if alone |
 
-**When a peer is already connected**:
+**When a connection is already present**:
 ```json
 {
   "header": { "type": "ready", "id": "...", "timestamp": "..." },
   "payload": {
-    "peerId": "my-device",
-    "channelId": "ABC12345",
-    "peer": {
-      "peerId": "other-device",
-      "metadata": {
-        "connectedAt": "2025-12-29T10:25:00.000Z"
-      }
+    "connectionId": "my-device",
+    "sessionId": "ABC12345",
+    "otherConnection": {
+      "id": "other-device",
+      "address": "::1",
+      "connectedAt": "2025-12-29T10:25:00.000Z"
     }
   }
 }
@@ -192,55 +181,48 @@ Sent immediately after successful WebSocket connection.
 
 ---
 
-### PEER
+### CONNECTION
 
-Sent when another peer joins or leaves the channel.
+Sent when another connection's status changes in the session.
 
-**Peer Joined**:
+**Connection Connected**:
 
 ```json
 {
   "header": {
-    "type": "peer",
+    "type": "connection",
     "id": "550e8400-e29b-41d4-a716-446655440001",
     "timestamp": "2025-12-29T10:31:00.000Z"
   },
   "payload": {
-    "peerId": "other-device",
-    "event": "joined",
-    "metadata": {
-      "connectedAt": "2025-12-29T10:31:00.000Z"
-    }
+    "connectionId": "other-device",
+    "status": "connected"
   }
 }
 ```
 
-**Peer Left**:
+**Connection Disconnected**:
 
 ```json
 {
   "header": {
-    "type": "peer",
+    "type": "connection",
     "id": "550e8400-e29b-41d4-a716-446655440002",
     "timestamp": "2025-12-29T10:35:00.000Z"
   },
   "payload": {
-    "peerId": "other-device",
-    "event": "left",
-    "metadata": {
-      "reason": "connection_closed"
-    }
+    "connectionId": "other-device",
+    "status": "disconnected"
   }
 }
 ```
 
 **Payload Fields**:
 
-| Field      | Type                   | Description     |
-|------------|------------------------|-----------------|
-| `peerId`   | string                 | Peer identifier |
-| `event`    | `"joined"` or `"left"` | Event type      |
-| `metadata` | object                 | Event metadata  |
+| Field          | Type                               | Description           |
+|----------------|------------------------------------|-----------------------|
+| `connectionId` | string                             | Connection identifier |
+| `status`       | `"connected"` or `"disconnected"`  | Connection status     |
 
 ---
 
@@ -256,8 +238,8 @@ Sent when an error occurs.
     "timestamp": "2025-12-29T10:32:00.000Z"
   },
   "payload": {
-    "code": "NO_PEER_CONNECTED",
-    "message": "No peer connected to relay message"
+    "code": "NO_OTHER_CONNECTION",
+    "message": "No other connection to relay message"
   }
 }
 ```
@@ -273,12 +255,12 @@ Sent when an error occurs.
 
 ## Client to Client Messages
 
-These messages are sent by clients and relayed by the server to the peer. The server validates the structure but does
+These messages are sent by clients and relayed by the server to the other connection. The server validates the structure but does
 not modify the content.
 
 ### DATA
 
-Transfer content (text or binary) to peer.
+Transfer content (text or binary) to other connection.
 
 ```json
 {
@@ -337,8 +319,8 @@ Transfer content (text or binary) to peer.
 - Validates `contentType` is "text" or "binary"
 - Validates `data` is present and is a string
 - If `contentType` is `binary`, validates `data` is valid Base64
-- Relays the message to peer unchanged
-- Returns `NO_PEER_CONNECTED` error if no peer in channel
+- Relays the message to other connection unchanged
+- Returns `NO_OTHER_CONNECTION` error if no other connection in session
 - Returns `MESSAGE_TOO_LARGE` error if message exceeds size limit
 
 ---
@@ -377,14 +359,14 @@ Acknowledge receipt of a message.
 
 - Validates `messageId` is present and valid UUID
 - Validates `status` is "success" or "error"
-- Relays to peer unchanged
-- If no peer connected: silently ignores (ACK may arrive after peer disconnects)
+- Relays to other connection unchanged
+- If no other connection connected: silently ignores
 
 ---
 
 ### CONTROL
 
-Send custom control commands to peer.
+Send custom control commands.
 
 ```json
 {
@@ -413,8 +395,8 @@ Send custom control commands to peer.
 **Server Behavior**:
 
 - Validates `command` is present and is a string
-- Relays to peer unchanged
-- Returns `NO_PEER_CONNECTED` error if no peer in channel
+- Relays to other connection unchanged
+- Returns `NO_OTHER_CONNECTION` error if no other connection in session
 
 **Suggested Commands** (clients can define custom commands):
 
@@ -430,32 +412,32 @@ Send custom control commands to peer.
 
 These errors occur after a successful connection and do not close the WebSocket.
 
-| Code                | Close Code | Description                         |
-|---------------------|------------|-------------------------------------|
-| `INVALID_MESSAGE`   | 4001       | Invalid message format or structure |
-| `MESSAGE_TOO_LARGE` | 4002       | Message exceeds size limit          |
-| `NO_PEER_CONNECTED` | 4003       | No peer in channel to relay message |
+| Code                  | Close Code | Description                          |
+|-----------------------|------------|--------------------------------------|
+| `INVALID_MESSAGE`     | 4001       | Invalid message format or structure  |
+| `MESSAGE_TOO_LARGE`   | 4002       | Message exceeds size limit           |
+| `NO_OTHER_CONNECTION` | 4003       | No other connection to relay message |
 
 ### Authentication Errors (Fatal - HTTP Upgrade)
 
 These errors occur during connection and reject the WebSocket upgrade.
 
-| Code              | HTTP Status | Description                                          |
-|-------------------|-------------|------------------------------------------------------|
-| `INVALID_SECRET`  | 401         | Invalid authentication secret                        |
-| `INVALID_CHANNEL` | 400         | Channel ID must be exactly 8 alphanumeric characters |
-| `INVALID_PEER_ID` | 400         | Peer identifier cannot be empty                      |
+| Code                    | HTTP Status | Description                                          |
+|-------------------------|-------------|------------------------------------------------------|
+| `INVALID_SECRET`        | 401         | Invalid authentication secret                        |
+| `INVALID_SESSION_ID`    | 400         | Session ID must be exactly 8 alphanumeric characters |
+| `INVALID_CONNECTION_ID` | 400         | Connection identifier invalid                        |
 
 ### State/Limit Errors (Fatal)
 
 These errors close the WebSocket connection.
 
-| Code                   | Close Code | HTTP Status | Description                       |
-|------------------------|------------|-------------|-----------------------------------|
-| `CHANNEL_FULL`         | 4200       | 503         | Channel already has 2 peers       |
-| `DUPLICATE_PEER_ID`    | 4201       | 409         | Peer ID already exists in channel |
-| `RATE_LIMIT_EXCEEDED`  | 4202       | 429         | Too many connection attempts      |
-| `MAX_CHANNELS_REACHED` | 4203       | 503         | Server channel limit reached      |
+| Code                      | Close Code | HTTP Status | Description                       |
+|---------------------------|------------|-------------|-----------------------------------|
+| `SESSION_FULL`            | 4200       | 503         | Session already has 2 connections |
+| `DUPLICATE_CONNECTION_ID` | 4201       | 409         | Connection ID already exists      |
+| `RATE_LIMIT_EXCEEDED`     | 4202       | 429         | Too many connection attempts      |
+| `MAX_SESSIONS_REACHED`    | 4203       | 503         | Server session limit reached      |
 
 ### Internal Errors (Fatal)
 
@@ -467,19 +449,19 @@ These errors close the WebSocket connection.
 
 ## Server Configuration Defaults
 
-| Setting                | Default           | Description                       |
-|------------------------|-------------------|-----------------------------------|
-| `PORT`                 | 3000              | Server port                       |
-| `MAX_MESSAGE_SIZE`     | 104857600 (100MB) | Maximum message size in bytes     |
-| `IDLE_TIMEOUT_SEC`     | 60                | WebSocket idle timeout in seconds |
-| `RATE_LIMIT_MAX`       | 10                | Max connections per IP per window |
-| `RATE_LIMIT_WINDOW_SEC`| 60                | Rate limit time window in seconds |
-| `MAX_CHANNELS`         | 4                 | Maximum concurrent channels       |
-| `COMPRESSION`          | false             | WebSocket per-message deflate     |
+| Setting                 | Default           | Description                       |
+|-------------------------|-------------------|-----------------------------------|
+| `PORT`                  | 3000              | Server port                       |
+| `MAX_MESSAGE_SIZE`      | 104857600 (100MB) | Maximum message size in bytes     |
+| `IDLE_TIMEOUT_SEC`      | 60                | WebSocket idle timeout in seconds |
+| `RATE_LIMIT_MAX`        | 10                | Max connections per IP per window |
+| `RATE_LIMIT_WINDOW_SEC` | 60                | Rate limit time window in seconds |
+| `MAX_SESSIONS`          | 4                 | Maximum concurrent sessions       |
+| `COMPRESSION`           | false             | WebSocket per-message deflate     |
 
 **Fixed Protocol Constraints**:
 
-- Maximum 2 peers per channel
+- Maximum 2 connections per session
 
 ---
 
@@ -509,11 +491,11 @@ These errors close the WebSocket connection.
 
 ### Required
 
-1. Connect with valid `channelId` (8 alphanumeric), `peerId` (non-empty), and `secret`
+1. Connect with valid `sessionId` (8 alphanumeric), `connectionId` (non-empty), and `secret`
 2. Generate UUID v4 for each message `id`
 3. Use ISO 8601 format for `timestamp`
-4. Handle all server message types: `ready`, `peer`, `error`
-5. Track peer connection state via `ready` and `peer` messages
+4. Handle all server message types: `ready`, `connection`, `error`
+5. Track other connection state via `ready` and `connection` messages
 6. Base64 encode binary data with `contentType: "binary"`
 7. Handle WebSocket close code 1001 for server shutdown (reconnect with backoff)
 
@@ -521,9 +503,9 @@ These errors close the WebSocket connection.
 
 1. Implement reconnection with exponential backoff
 2. Send ACK for important DATA messages
-3. Handle `NO_PEER_CONNECTED` errors (queue or discard)
+3. Handle `NO_OTHER_CONNECTION` errors (queue or discard)
 4. Implement message deduplication using `id` field
-5. Check `peer` field in `ready` to know if peer is already connected
+5. Check `otherConnection` field in `ready` to know if someone is already connected
 
 ### Optional
 
@@ -537,13 +519,13 @@ These errors close the WebSocket connection.
 
 ```typescript
 // Message Types
-type MessageType = "control" | "data" | "ack" | "ready" | "peer" | "error";
+type MessageType = "control" | "data" | "ack" | "ready" | "connection" | "error";
 
 // Content Types
 type ContentType = "text" | "binary";
 
-// Peer Events
-type PeerEventType = "joined" | "left";
+// Connection Status
+type ConnectionStatus = "connected" | "disconnected";
 
 // ACK Status
 type AckStatus = "success" | "error";
@@ -586,21 +568,21 @@ interface ControlMessage {
 interface ReadyMessage {
     header: MessageHeader & { type: "ready" };
     payload: {
-        peerId: string;
-        channelId: string;
-        peer: {
-            peerId: string;
-            metadata?: Record<string, unknown>;
+        connectionId: string;
+        sessionId: string;
+        otherConnection: {
+            id: string;
+            address: string;
+            connectedAt: string;
         } | null;
     };
 }
 
-interface PeerMessage {
-    header: MessageHeader & { type: "peer" };
+interface ConnectionMessage {
+    header: MessageHeader & { type: "connection" };
     payload: {
-        peerId: string;
-        event: PeerEventType;
-        metadata?: Record<string, unknown>;
+        connectionId: string;
+        status: ConnectionStatus;
     };
 }
 
@@ -613,7 +595,7 @@ interface ErrorMessage {
 }
 
 // Union type for all messages
-type ServerMessage = ReadyMessage | PeerMessage | ErrorMessage;
+type ServerMessage = ReadyMessage | ConnectionMessage | ErrorMessage;
 type ClientMessage = DataMessage | AckMessage | ControlMessage;
 type Message = ServerMessage | ClientMessage;
 ```
@@ -622,14 +604,14 @@ type Message = ServerMessage | ClientMessage;
 
 ## Quick Reference
 
-| Action           | Message Type | Direction        | Key Fields              |
-|------------------|--------------|------------------|-------------------------|
-| Send content     | `data`       | Client -> Peer   | contentType, data       |
-| Acknowledge      | `ack`        | Client -> Peer   | messageId, status       |
-| Send command     | `control`    | Client -> Peer   | command                 |
-| Connection ready | `ready`      | Server -> Client | peerId, channelId, peer |
-| Peer status      | `peer`       | Server -> Client | peerId, event           |
-| Error occurred   | `error`      | Server -> Client | code, message           |
+| Action            | Message Type | Direction        | Key Fields              |
+|-------------------|--------------|------------------|-------------------------|
+| Send content      | `data`       | Client -> Client | contentType, data       |
+| Acknowledge       | `ack`        | Client -> Client | messageId, status       |
+| Send command      | `control`    | Client -> Client | command                 |
+| Connection ready  | `ready`      | Server -> Client | connectionId, sessionId |
+| Connection status | `connection` | Server -> Client | connectionId, status    |
+| Error occurred    | `error`      | Server -> Client | code, message           |
 
 **Server Shutdown**: When the server shuts down, it closes all connections with WebSocket close code `1001` (Going Away) 
 and reason "Server shutting down". Clients should implement reconnection logic with exponential backoff.
