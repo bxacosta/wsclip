@@ -10,16 +10,16 @@ This document describes implementation-specific details of the CRSP relay server
 
 The server implements the following default limits (all configurable via environment variables):
 
-| Configuration       | Environment Variable   | Default Value     | Description                                |
-|---------------------|------------------------|-------------------|--------------------------------------------|
-| `MAX_MESSAGE_SIZE`  | `MAX_MESSAGE_SIZE`     | 104857600 (100MB) | Maximum complete JSON message size         |
-| `MAX_CHANNELS`      | `MAX_CHANNELS`         | 4                 | Maximum active channels per server         |
-| `PEERS_PER_CHANNEL` | N/A                    | 2                 | Peers per channel (protocol-defined)*      |
-| `IDLE_TIMEOUT`      | `IDLE_TIMEOUT`         | 60 (seconds)      | Inactivity timeout for authenticated conns |
-| `RATE_LIMIT_MAX`    | `RATE_LIMIT_MAX`       | 10                | Max connections per IP in time window      |
-| `RATE_LIMIT_WINDOW` | `RATE_LIMIT_WINDOW_MS` | 60000ms (60s)     | Time window for rate limiting              |
+| Configuration             | Environment Variable    | Default Value     | Description                                 |
+|---------------------------|-------------------------|-------------------|---------------------------------------------|
+| `MAX_MESSAGE_SIZE`        | `MAX_MESSAGE_SIZE`      | 104857600 (100MB) | Maximum complete JSON message size          |
+| `MAX_SESSIONS`            | `MAX_SESSIONS`          | 4                 | Maximum active sessions per server          |
+| `CONNECTIONS_PER_SESSION` | N/A                     | 2                 | Connections per session (protocol-defined)* |
+| `IDLE_TIMEOUT`            | `IDLE_TIMEOUT_SEC`      | 60 (seconds)      | Inactivity timeout for authenticated conns  |
+| `RATE_LIMIT_MAX`          | `RATE_LIMIT_MAX`        | 10                | Max connections per IP in time window       |
+| `RATE_LIMIT_WINDOW`       | `RATE_LIMIT_WINDOW_SEC` | 60 (seconds)      | Time window for rate limiting               |
 
-*Note: `PEERS_PER_CHANNEL` is hardcoded to 2 in the current implementation. While the protocol specification defines
+*Note: `CONNECTIONS_PER_SESSION` is hardcoded to 2 in the current implementation. While the protocol specification defines
 this as a protocol constraint, the architecture allows changing this value with minimal effort in future versions.
 
 ### 1.2 Environment Variables
@@ -31,10 +31,10 @@ SERVER_SECRET=your-secret-here
 # Optional (with defaults shown)
 PORT=3000
 MAX_MESSAGE_SIZE=104857600
-MAX_CHANNELS=4
-IDLE_TIMEOUT=60
+MAX_SESSIONS=4
+IDLE_TIMEOUT_SEC=60
 RATE_LIMIT_MAX=10
-RATE_LIMIT_WINDOW_MS=60000
+RATE_LIMIT_WINDOW_SEC=60
 LOG_LEVEL=info
 NODE_ENV=development
 ```
@@ -44,12 +44,13 @@ NODE_ENV=development
 **Connection URL Format**:
 
 ```
-ws://host:port/ws?channelId=<channel-id>&peerId=<peer-id>&secret=<secret>
+ws://host:port/ws?sessionId=<session-id>&connectionId=<connection-id>&secret=<secret>
 ```
 
 **Query Parameters**:
-- `channelId` (required): 8-character alphanumeric channel identifier
-- `peerId` (required): Peer identifier for this connection
+
+- `sessionId` (required): 8-character alphanumeric session identifier
+- `connectionId` (required): Connection identifier for this connection
 - `secret` (optional): Authentication secret as query parameter fallback
 
 **Dual Authentication Mechanism**:
@@ -66,24 +67,25 @@ The server implements dual authentication to support both standard HTTP clients 
 
 2. **Fallback Method - Query Parameter**:
    ```
-   ws://host:port/ws?channelId=xxx&peerId=xxx&secret=your-secret-here
+   ws://host:port/ws?sessionId=xxx&connectionId=xxx&secret=your-secret-here
    ```
    - Provided for browser WebSocket API compatibility
    - Browser WebSocket API does not support custom headers
    - Less secure (visible in URL and logs)
 
 **Validation Logic**:
+
 - Server checks Authorization header first
 - If no Bearer token found, falls back to `secret` query parameter
-- If neither is present or secret is invalid, connection is rejected during HTTP upgrade (never establishes WebSocket)
-- Validation also checks channelId format, peerId format, channel capacity, and duplicate peerId
-- Either authentication method is sufficient for successful authentication
+- If neither is present or secret is invalid, the connection is rejected during HTTP upgrade
+- Validation also checks sessionId format, connectionId format, session capacity, and duplicate connectionId
+- Either authentication method is enough for successful authentication
 
 **Client Implementation Examples**:
 
 ```typescript
 // Browser client with query parameter (browser WebSocket API limitation)
-const ws = new WebSocket("ws://host:port/ws?channelId=abc12345&peerId=laptop&secret=your-secret");
+const ws = new WebSocket("ws://host:port/ws?sessionId=abc12345&connectionId=laptop&secret=server-secret");
 
 ws.addEventListener("open", () => {
     // Connection is already authenticated
@@ -118,7 +120,7 @@ Recoverable errors - connection remains open, client can retry.
 |---------------------|------------|-------------|-------------------------------|
 | `INVALID_MESSAGE`   | 4001       | 400         | Invalid message format        |
 | `MESSAGE_TOO_LARGE` | 4002       | 400         | Message exceeds size limit    |
-| `NO_PEER_CONNECTED` | 4003       | 400         | No peer available to relay to |
+| `NO_OTHER_CONNECTION`| 4003      | 400         | No other connection available |
 
 ### 2.2 Authentication Errors (4100-4199)
 
@@ -126,34 +128,35 @@ Fatal errors - connection closes after error. These errors occur during HTTP upg
 
 | Error Code            | Close Code | HTTP Status | Description                     |
 |-----------------------|------------|-------------|---------------------------------|
-| `INVALID_SECRET`      | 4101       | 401         | Incorrect authentication secret |
-| `INVALID_CHANNEL`     | 4102       | 400         | Invalid channel ID format       |
-| `INVALID_PEER_ID`     | 4103       | 400         | Invalid peer identifier         |
+| `INVALID_SECRET`      | 4100       | 401         | Incorrect authentication secret |
+| `INVALID_SESSION_ID`  | 4101       | 400         | Invalid session ID format       |
+| `INVALID_CONNECTION_ID`| 4102       | 400         | Invalid connection identifier   |
 
-### 2.3 State/Limit Errors (5000-5099)
+### 2.3 State/Limit Errors (4200-4299)
 
 Fatal errors - connection closes after error.
 
 | Error Code              | Close Code | HTTP Status | Description                     |
 |-------------------------|------------|-------------|---------------------------------|
-| `CHANNEL_FULL`          | 5001       | 503         | Channel already has 2 peers     |
-| `DUPLICATE_PEER_ID`     | 5002       | 409         | Peer identifier already in use  |
-| `RATE_LIMIT_EXCEEDED`   | 5003       | 429         | Too many connection attempts    |
-| `MAX_CHANNELS_REACHED`  | 5004       | 503         | Server channel limit reached    |
+| `SESSION_FULL`          | 4200       | 503         | Session already has 2 connections|
+| `DUPLICATE_CONNECTION_ID`| 4201       | 409         | Connection identifier already in use|
+| `RATE_LIMIT_EXCEEDED`   | 4202       | 429         | Too many connection attempts    |
+| `MAX_SESSIONS_REACHED`  | 4203       | 503         | Server session limit reached    |
 
-### 2.4 Internal Errors (5900-5999)
+### 2.4 Internal Errors (4900-4999)
 
 Fatal errors - connection closes after error.
 
 | Error Code       | Close Code | HTTP Status | Description             |
 |------------------|------------|-------------|-------------------------|
-| `INTERNAL_ERROR` | 5900       | 500         | Unexpected server error |
+| `INTERNAL_ERROR` | 4900       | 500         | Unexpected server error |
 
 ### 2.5 Standard WebSocket Codes
 
 | Code | Name             | Usage                            |
 |------|------------------|----------------------------------|
 | 1000 | Normal Closure   | Clean disconnect or idle timeout |
+| 1001 | Going Away       | Server shutdown                  |
 | 1002 | Protocol Error   | WebSocket protocol violation     |
 | 1003 | Unsupported Data | Non-text frame received          |
 | 1008 | Policy Violation | Message size exceeded            |
@@ -228,7 +231,8 @@ const metadataSchema = z.record(z.string(), z.unknown());
 ```
 
 - Complete passthrough - no content validation
-- Server relays as-is to peer
+- Complete passthrough - no content validation
+- Server relays as-is to other connection
 - Client responsibility to validate
 
 ### 4.2 Validation Error Handling
@@ -243,53 +247,52 @@ When validation fails, the server:
 
 ---
 
-## 5. Channel Management
+## 5. Session Management
 
-### 5.1 Channel Structure
+### 5.1 Session Structure
 
-Internally, the server maintains a `ChannelManager` singleton with:
+Internally, the server maintains a `SessionManager` singleton with:
 
 ```typescript
-interface Channel {
-    channelId: string;
-    peers: Map<string, Peer>;
+interface Session {
+    sessionId: string;
+    connections: Map<string, Connection>;
     createdAt: Date;
 }
 
-interface Peer {
-    peerId: string;
+interface Connection {
+    id: string;
     ws: TypedWebSocket;
     connectedAt: Date;
-    metadata?: Metadata;
 }
 ```
 
-### 5.2 Channel Lifecycle
+### 5.2 Session Lifecycle
 
 **Creation**:
 
-- Channel created automatically when first peer authenticates
-- Channel ID provided by client in WebSocket URL query parameter
+- Session created automatically when first connection authenticates
+- Session ID provided by client in WebSocket URL query parameter
 - No pre-registration required
 
 **Active State**:
 
-- Channel exists as long as at least one peer is connected
-- Maximum 2 peers per channel (hardcoded)
-- Peers can send/receive messages
+- Session exists as long as at least one connection is active
+- Maximum 2 connections per session (hardcoded)
+- Connections can send/receive messages
 
 **Cleanup**:
 
-- When last peer disconnects, channel is automatically deleted
-- No channel persistence
+- When last connection disconnects, session is automatically deleted
+- No session persistence
 - No cleanup delay
 
-### 5.3 Peer Identifier Uniqueness
+### 5.3 Connection Identifier Uniqueness
 
-Within a channel:
+Within a session:
 
-- Peer identifiers must be unique
-- Attempted duplicate → `DUPLICATE_PEER_ID` error (5002)
+- Connection identifiers must be unique
+- Attempted duplicate → `DUPLICATE_CONNECTION_ID` error (4201)
 - Duplicate validation happens during HTTP upgrade
 - Case-sensitive comparison
 - No reserved identifiers
@@ -305,16 +308,16 @@ The server implements transparent relay with the following rules:
 **DATA and CONTROL messages**:
 
 1. Validate message structure
-2. Check for peer presence
-3. If peer exists: relay entire message without modifications
-4. If no peer: send ERROR with code `NO_PEER_CONNECTED`
+2. Check for other connection presence
+3. If other connection exists: relay entire message without modifications
+4. If no other connection: send ERROR with code `NO_OTHER_CONNECTION`
 
 **ACK messages**:
 
 1. Validate message structure
-2. Attempt to relay to peer
-3. If peer disconnected: ignore silently (no error sent)
-4. Rationale: ACK may arrive after peer disconnect, not an error condition
+2. Attempt to relay to other connection
+3. If other connection disconnected: ignore silently (no error sent)
+4. Rationale: ACK may arrive after connection disconnect, not an error condition
 
 ### 6.2 Message Size Enforcement
 
@@ -421,7 +424,7 @@ openssl rand -base64 32
 **Key Metrics to Monitor**:
 
 - Active connections count
-- Active channels count
+- Active sessions count
 - Message throughput (messages/second)
 - Average message size
 - Error rates by error code
@@ -431,8 +434,8 @@ openssl rand -base64 32
 **Log Levels**:
 
 - `error`: Authentication failures, validation errors, unexpected errors
-- `warn`: Rate limit hits, backpressure events, peer not found
-- `info`: Connections, disconnections, channel lifecycle
+- `warn`: Rate limit hits, backpressure events, connection not found
+- `info`: Connections, disconnections, session lifecycle
 - `debug`: Individual message relay, validation details
 
 **Privacy Note**: Server logs only headers and basic metadata. The `data` field in DATA messages is NEVER logged.
@@ -518,8 +521,8 @@ export function upgrade(req: Request, server: Server): boolean {
 
 ```typescript
 interface WebSocketData {
-    peerId: string;
-    channelId: string;
+    connectionId: string;
+    sessionId: string;
     connectedAt: Date;
     metadata?: Metadata;
 }
@@ -527,22 +530,22 @@ interface WebSocketData {
 type TypedWebSocket = ServerWebSocket<WebSocketData>;
 ```
 
-### 9.2 Pub/Sub for Channel Broadcast
+### 9.2 Pub/Sub for Session Broadcast
 
-The server uses Bun's native pub/sub for efficient channel-wide broadcasts:
+The server uses Bun's native pub/sub for efficient session-wide broadcasts:
 
 ```typescript
-// Subscribe peer to channel
-ws.subscribe(channelId);
+// Subscribe connection to session
+ws.subscribe(sessionId);
 
-// Broadcast to all peers in channel
-ws.publish(channelId, message);
+// Broadcast to all connections in session
+ws.publish(sessionId, message);
 
 // Unsubscribe on disconnect
-ws.unsubscribe(channelId);
+ws.unsubscribe(sessionId);
 ```
 
-**Performance**: Pub/sub avoids manual iteration over channel members, delegating to Bun's optimized implementation.
+**Performance**: Pub/sub avoids manual iteration over session members, delegating to Bun's optimized implementation.
 
 ### 9.3 Backpressure Handling
 
@@ -566,10 +569,8 @@ implementing sender-side flow control.
 
 **Test Client**: `playground.html` in project root
 
-**Multi-Peer Testing**:
-
 1. Open `test-client.html` in multiple browser tabs/windows
-2. Use same channel ID, different peer identifiers
+2. Use same session ID, different connection identifiers
 3. Test data/control message exchange
 4. Test disconnect/reconnect scenarios
 
@@ -588,8 +589,8 @@ implementing sender-side flow control.
 
 ```json
 {
-  "activeChannels": 2,
-  "maxChannels": 4,
+  "activeSessions": 2,
+  "maxSessions": 4,
   "activeConnections": 4,
   "messagesRelayed": 156,
   "bytesTransferred": 2457890,
@@ -597,15 +598,15 @@ implementing sender-side flow control.
   "newestConnectionAge": 120,
   "errors": {
     "INVALID_SECRET": 0,
-    "INVALID_CHANNEL": 0,
-    "INVALID_PEER_ID": 0,
-    "CHANNEL_FULL": 0,
-    "DUPLICATE_PEER_ID": 0,
+    "INVALID_SESSION_ID": 0,
+    "INVALID_CONNECTION_ID": 0,
+    "SESSION_FULL": 0,
+    "DUPLICATE_CONNECTION_ID": 0,
     "INVALID_MESSAGE": 0,
     "MESSAGE_TOO_LARGE": 0,
-    "NO_PEER_CONNECTED": 0,
+    "NO_OTHER_CONNECTION": 0,
     "RATE_LIMIT_EXCEEDED": 0,
-    "MAX_CHANNELS_REACHED": 0,
+    "MAX_SESSIONS_REACHED": 0,
     "INTERNAL_ERROR": 0
   },
   "memoryUsage": {
@@ -633,7 +634,7 @@ implementing sender-side flow control.
 
 **Scenarios to Test**:
 
-1. Maximum channels (MAX_CHANNELS)
+1. Maximum sessions (MAX_SESSIONS)
 2. Rapid connect/disconnect cycles
 3. Rate limit enforcement
 4. Large message handling (near MAX_MESSAGE_SIZE)
@@ -663,6 +664,11 @@ function connect() {
             // Fatal error - do not reconnect
             console.error("Fatal error:", event.reason);
             return;
+        }
+
+        // Standard close (1001) means server shutdown - reconnect
+        if (event.code === 1001) {
+            // Server shutting down - wait and reconnect
         }
 
         // Exponential backoff
@@ -750,20 +756,20 @@ function retryTimedOut(messageId) {
 - Server cannot provide content-aware features (compression, caching)
 - Content validation is client responsibility
 
-### 12.3 Hardcoded 2-Peer Limit
+### 12.3 Hardcoded 2-Connection Limit
 
-**Decision**: `PEERS_PER_CHANNEL = 2` is hardcoded
+**Decision**: `CONNECTIONS_PER_SESSION = 2` is hardcoded
 
 **Rationale**:
 
-- Target use case is peer-to-peer sync (2 peers)
+- Target use case is peer-to-peer sync (2 connections via relay)
 - Simplifies relay logic (no broadcast to N > 2)
 - Clear mental model for users
 
-**Future Extension**: Architecture supports changing to N peers with minimal effort:
+**Future Extension**: Architecture supports changing to N connections with minimal effort:
 
 - Change constant value
-- Update relay logic to iterate over N peers
+- Update relay logic to iterate over N connections
 - No protocol changes required
 
 ---

@@ -42,7 +42,7 @@ graph LR
 
 **Characteristics**:
 
-- Private channel with exactly 2 participants
+- Private session with exactly 2 participants
 - Bidirectional symmetric communication
 - Transparent relay server (does not modify data messages)
 - No message persistence
@@ -86,16 +86,16 @@ interface MessageHeader {
 }
 
 type MessageType =
-        // Control Messages (client ↔ client via relay)
+        // Control Messages (client <-> client via relay)
         | "control"           // Generic control command
 
-        // Data Messages (client ↔ client via relay)
+        // Data Messages (client <-> client via relay)
         | "data"              // Data message
         | "ack"               // Reception acknowledgment
 
-        // System Messages (server → client)
+        // System Messages (server -> client)
         | "ready"             // Connection confirmation
-        | "peer"              // Peer event (joined/left)
+        | "connection"        // Connection event (joined/left)
         | "error";            // Server error
 ```
 
@@ -142,8 +142,8 @@ The payload contains message-specific content. Structure varies by message type 
 
 **Payload Fields**:
 
-- `command` (string): REQUIRED – Command identifier
-- `metadata` (object | null): OPTIONAL – Flexible parameters for the command
+- `command` (string): REQUIRED - Command identifier
+- `metadata` (object | null): OPTIONAL - Flexible parameters for the command
 
 **Validation**:
 
@@ -154,8 +154,8 @@ The payload contains message-specific content. Structure varies by message type 
 **Server Behavior**:
 
 - Validates basic structure
-- Relays to peer without modifications
-- If no peer: Returns error `NO_PEER_CONNECTED`
+- Relays to other connection without modifications
+- If no other connection: Returns error `NO_OTHER_CONNECTION`
 
 ---
 
@@ -222,11 +222,11 @@ The payload contains message-specific content. Structure varies by message type 
 **Server Behavior**:
 
 - Validates structure per above rules
-- Relays to peer without modifying `payload`
-- If no peer: Returns error `NO_PEER_CONNECTED`
+- Relays to other connection without modifying `payload`
+- If no other connection: Returns error `NO_OTHER_CONNECTION`
 - If size exceeds limit: Returns error `MESSAGE_TOO_LARGE`
 
-#### 4.2.2 ACK Message (Client ↔ Client)
+#### 4.2.2 ACK Message (Client <-> Client)
 
 **Purpose**: Confirm successful reception of a `data` or `control` message.
 
@@ -275,8 +275,8 @@ The payload contains message-specific content. Structure varies by message type 
 **Server Behavior**:
 
 - Validates basic structure
-- Relays to peer without modifications
-- If no peer: Ignores silently (ACK may arrive after disconnection)
+- Relays to other connection without modifications
+- If no other connection: Ignores silently (ACK may arrive after disconnection)
 
 ---
 
@@ -285,9 +285,9 @@ The payload contains message-specific content. Structure varies by message type 
 System messages are sent only by the server to clients. They do not have a flexible payload since they are
 server-generated.
 
-#### 4.3.1 READY Message (Server → Client)
+#### 4.3.1 READY Message (Server -> Client)
 
-**Purpose**: Confirm successful authentication and provide channel state including peer information.
+**Purpose**: Confirm successful authentication and provide session state including other connection information.
 
 **Structure**:
 
@@ -299,9 +299,9 @@ server-generated.
     "timestamp": "2025-12-24T10:30:00.000Z"
   },
   "payload": {
-    "peerId": "laptop-work",
-    "channelId": "abc12345",
-    "peer": {
+    "sessionId": "abc12345",
+    "connectionId": "laptop-work",
+    "otherConnection": {
       "id": "laptop-home",
       "address": "192.168.10.1",
       "connectedAt": "2025-12-24T10:30:00.000Z"
@@ -311,24 +311,24 @@ server-generated.
 ```
 
 **Payload Fields**:
-- `peerId` (string): REQUIRED - Connected peer identifier
-- `channelId` (string): REQUIRED - Channel ID (8 alphanumeric characters)
-- `peer` (object | null): REQUIRED - Existing peer information or null if no peer connected
+- `connectionId` (string): REQUIRED - Connected connection identifier
+- `sessionId` (string): REQUIRED - Session ID (8 alphanumeric characters)
+- `otherConnection` (object | null): REQUIRED - Existing connection information or null if no other connection
 
-#### 4.3.2 PEER Message (Server → Client)
+#### 4.3.2 CONNECTION Message (Server -> Client)
 
-**Purpose**: Notify events related to the peer (joining or leaving the channel).
+**Purpose**: Notify events related to other connections (joining or leaving the session).
 
 **Structure**:
 ```json
 {
   "header": {
-    "type": "peer",
+    "type": "connection",
     "id": "server-gen-uuid",
     "timestamp": "2025-12-24T10:31:00.000Z"
   },
   "payload": {
-    "peerId": "phone-android",
+    "connectionId": "phone-android",
     "event": "joined"
   }
 }
@@ -336,16 +336,16 @@ server-generated.
 
 **Payload Fields**:
 
-- `peerId` (string): REQUIRED - Peer identifier
+- `connectionId` (string): REQUIRED - Connection identifier
 - `event` (enum): REQUIRED
-  - `"joined"`: Peer joined the channel
-  - `"left"`: Peer left the channel
+  - `"joined"`: Connection joined the session
+  - `"left"`: Connection left the session
 - `metadata` (object): OPTIONAL - Event-specific information
 
-**Note**: When the second peer connects, only the first peer receives a `peer` message with `event: "joined"`. The
-second peer receives the first peer's information in the `ready` message.
+**Note**: When the second connection joins, only the first connection receives a `connection` message with `event: "joined"`. The
+second connection receives the first connection's information in the `ready` message.
 
-#### 4.3.3 ERROR Message (Server → Client)
+#### 4.3.3 ERROR Message (Server -> Client)
 
 **Purpose**: Notify validation or state errors.
 
@@ -385,20 +385,20 @@ implementation-specific, but the categories are defined by the protocol:
 
 - `INVALID_MESSAGE`: Invalid message format or structure
 - `MESSAGE_TOO_LARGE`: Message exceeds configured size limit
-- `NO_PEER_CONNECTED`: No peer available to receive the message
+- `NO_OTHER_CONNECTION`: No other connection available to receive the message
 
 **Authentication Errors** (always fatal):
 
 - `INVALID_SECRET`: Invalid authentication secret
-- `INVALID_CHANNEL_ID`: Invalid channel identifier
-- `INVALID_PEER_ID`: Invalid peer identifier
+- `INVALID_SESSION_ID`: Invalid session identifier
+- `INVALID_CONNECTION_ID`: Invalid connection identifier
 
 **State/Limit Errors** (always fatal):
 
-- `CHANNEL_FULL`: Channel has reached maximum peer limit
-- `DUPLICATE_PEER_ID`: Peer identifier already in use in channel
+- `SESSION_FULL`: Session has reached maximum connection limit
+- `DUPLICATE_CONNECTION_ID`: Connection identifier already in use in session
 - `RATE_LIMIT_EXCEEDED`: Connection rate limit exceeded
-- `MAX_CHANNELS_REACHED`: Server channel limit reached
+- `MAX_SESSIONS_REACHED`: Server session limit reached
 
 **Internal Errors** (always fatal):
 
@@ -416,85 +416,85 @@ implementation-specific, but the categories are defined by the protocol:
 ### 5.1 Connection Establishment
 
 ```
-1. Client → Server: WebSocket Upgrade
-   URL: ws://host:port/ws?channelId=abc12345&peerId=laptop&secret=your-secret
+1. Client -> Server: WebSocket Upgrade
+   URL: ws://host:port/ws?sessionId=abc12345&connectionId=laptop&secret=your-secret
    Headers: Authorization: Bearer your-secret (preferred method)
 
    Note: Either Authorization header or secret query parameter is required.
    Query parameter fallback is provided for browser WebSocket clients.
 
    Authentication is validated during HTTP handshake. If invalid:
-   - HTTP 400 (INVALID_CHANNEL_ID, INVALID_PEER_ID, INVALID_MESSAGE)
+   - HTTP 400 (INVALID_SESSION_ID, INVALID_CONNECTION_ID, INVALID_MESSAGE)
    - HTTP 401 (INVALID_SECRET)
-   - HTTP 409 (DUPLICATE_PEER_ID)
+   - HTTP 409 (DUPLICATE_CONNECTION_ID)
    - HTTP 429 (RATE_LIMIT_EXCEEDED)
-   - HTTP 503 (CHANNEL_FULL, MAX_CHANNELS_REACHED)
+   - HTTP 503 (SESSION_FULL, MAX_SESSIONS_REACHED)
 
 2. Server: 101 Switching Protocols (WebSocket connection established)
 
-3. Server → Client: READY message (sent immediately upon connection)
+3. Server -> Client: READY message (sent immediately upon connection)
    {
      "header": { "type": "ready", ... },
-     "payload": { "peer": null, ... }
+     "payload": { "otherConnection": null, ... }
    }
 ```
 
 ### 5.2 Second Client Joins
 
 ```
-4. Client B → Server: WebSocket Upgrade (same process as Client A)
+4. Client B -> Server: WebSocket Upgrade (same process as Client A)
 
-5. Server → Client B: READY message (includes existing peer info)
+5. Server -> Client B: READY message (includes existing connection info)
    {
      "header": { "type": "ready", ... },
-     "payload": { "peer": { "id": "laptop", ... }, ... }
+     "payload": { "otherConnection": { "id": "laptop", ... }, ... }
    }
 
-6. Server → Client A: PEER message
+6. Server -> Client A: CONNECTION message
    {
-     "header": { "type": "peer", ... },
-     "payload": { "peerId": "phone", "event": "joined", ... }
+     "header": { "type": "connection", ... },
+     "payload": { "connectionId": "phone", "event": "joined", ... }
    }
 ```
 
 ### 5.3 Data Exchange with ACK
 
 ```
-8. Client A → Server: DATA message
+8. Client A -> Server: DATA message
    {
      "header": { "type": "data", "id": "msg-123", ... },
      "payload": { "contentType": "text", "data": "Hello", ... }
    }
 
-9. Server → Client B: (Relays DATA message without modifications)
+9. Server -> Client B: (Relays DATA message without modifications)
 
-10. Client B → Server: ACK message
+10. Client B -> Server: ACK message
     {
       "header": { "type": "ack", "id": "ack-456", ... },
       "payload": { "messageId": "msg-123", "status": "success", ... }
     }
 
-11. Server → Client A: (Relays ACK message)
+11. Server -> Client A: (Relays ACK message)
 ```
 
 ### 5.4 Control Command
 
 ```
-12. Client A → Server: CONTROL message
+12. Client A -> Server: CONTROL message
     {
       "header": { "type": "control", "id": "ctrl-789", ... },
       "payload": { "command": "ping", "metadata": null }
     }
 
-13. Server → Client B: (Relays CONTROL message)
+13. Server -> Client B: (Relays CONTROL message)
 
-14. Client B → Server: CONTROL message (response)
+14. Client B -> Server: CONTROL message (response)
     {
       "header": { "type": "control", "id": "ctrl-790", ... },
       "payload": { "command": "pong", "metadata": { "latency": 45 } }
     }
 
-15. Server → Client A: (Relays response)
+15. Server -> Client A: (Relays response)
 ```
 
 ### 5.5 Disconnection
@@ -502,10 +502,10 @@ implementation-specific, but the categories are defined by the protocol:
 ```
 16. Client B: Closes WebSocket connection
 
-17. Server → Client A: PEER message
+17. Server -> Client A: CONNECTION message
     {
-      "header": { "type": "peer", ... },
-      "payload": { "peerId": "phone", "event": "left", ... }
+      "header": { "type": "connection", ... },
+      "payload": { "connectionId": "phone", "event": "left", ... }
     }
 ```
 
@@ -568,15 +568,15 @@ The server implements validation at three levels:
 
 The protocol defines the following constraints that implementations must respect:
 
-| Constraint            | Value | Description                                     |
-|-----------------------|-------|-------------------------------------------------|
-| `PEERS_PER_CHANNEL`   | 2     | Maximum peers per channel (protocol-defined)    |
+| Constraint                | Value | Description                                        |
+|---------------------------|-------|----------------------------------------------------|
+| `CONNECTIONS_PER_SESSION` | 2     | Maximum connections per session (protocol-defined) |
 
 **Implementation-Specific Limits**:
 
 Implementations may define additional configurable limits such as:
 - `MAX_MESSAGE_SIZE`: Maximum JSON message size
-- `MAX_CHANNELS`: Maximum active channels per server
+- `MAX_SESSIONS`: Maximum active sessions per server
 - `IDLE_TIMEOUT`: Inactivity timeout for connections
 - `RATE_LIMIT_MAX`: Connection rate limiting per IP
 - `RATE_LIMIT_WINDOW`: Time window for rate limiting
@@ -592,8 +592,8 @@ See implementation documentation for specific default values and configuration o
 **Server MUST**:
 - Validate message structure per defined level
 - Verify authentication and authorization
-- Manage channels and connections
-- Relay messages between peers
+- Manage sessions and connections
+- Relay messages between connections
 - Handle errors and notify clients
 - Implement rate limiting and abuse protection
 - Respect size and connection limits
@@ -635,10 +635,10 @@ See implementation documentation for specific default values and configuration o
 - Consistent message structure
 - Unique message identification (via ID)
 - Transparent relay of extensible payloads
-- Channel event notification (join/leave)
+- Session event notification (join/leave)
 
 **CRSP does NOT guarantee**:
-- Message delivery (if peer disconnected)
+- Message delivery (if other connection disconnected)
 - Message persistence
 - Reception confirmation (depends on optional ACKs)
-- Order between different channels
+- Order between different sessions

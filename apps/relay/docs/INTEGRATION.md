@@ -141,7 +141,6 @@ All WebSocket messages use JSON with this structure:
 | `ready`    | Connection established successfully |
 | `peer`     | Peer joined or left the channel     |
 | `error`    | Error notification                  |
-| `shutdown` | Server is shutting down             |
 
 ---
 
@@ -269,35 +268,6 @@ Sent when an error occurs.
 |-----------|--------|--------------------------------------|
 | `code`    | string | Error code (see Error Codes section) |
 | `message` | string | Human-readable error message         |
-
----
-
-### SHUTDOWN
-
-Sent when the server is shutting down gracefully.
-
-```json
-{
-  "header": {
-    "type": "shutdown",
-    "id": "550e8400-e29b-41d4-a716-446655440004",
-    "timestamp": "2025-12-29T10:40:00.000Z"
-  },
-  "payload": {
-    "message": "Server is shutting down for maintenance",
-    "gracePeriod": 5
-  }
-}
-```
-
-**Payload Fields**:
-
-| Field         | Type   | Description                                   |
-|---------------|--------|-----------------------------------------------|
-| `message`     | string | Shutdown reason                               |
-| `gracePeriod` | number | Seconds until connection is closed (optional) |
-
-**Recommended Action**: Save state and close connection gracefully.
 
 ---
 
@@ -482,16 +452,16 @@ These errors close the WebSocket connection.
 
 | Code                   | Close Code | HTTP Status | Description                       |
 |------------------------|------------|-------------|-----------------------------------|
-| `CHANNEL_FULL`         | 5001       | 503         | Channel already has 2 peers       |
-| `DUPLICATE_PEER_ID`    | 5002       | 409         | Peer ID already exists in channel |
-| `RATE_LIMIT_EXCEEDED`  | 5003       | 429         | Too many connection attempts      |
-| `MAX_CHANNELS_REACHED` | 5004       | 503         | Server channel limit reached      |
+| `CHANNEL_FULL`         | 4200       | 503         | Channel already has 2 peers       |
+| `DUPLICATE_PEER_ID`    | 4201       | 409         | Peer ID already exists in channel |
+| `RATE_LIMIT_EXCEEDED`  | 4202       | 429         | Too many connection attempts      |
+| `MAX_CHANNELS_REACHED` | 4203       | 503         | Server channel limit reached      |
 
 ### Internal Errors (Fatal)
 
 | Code             | Close Code | Description             |
 |------------------|------------|-------------------------|
-| `INTERNAL_ERROR` | 5900       | Unexpected server error |
+| `INTERNAL_ERROR` | 4900       | Unexpected server error |
 
 ---
 
@@ -501,11 +471,11 @@ These errors close the WebSocket connection.
 |------------------------|-------------------|-----------------------------------|
 | `PORT`                 | 3000              | Server port                       |
 | `MAX_MESSAGE_SIZE`     | 104857600 (100MB) | Maximum message size in bytes     |
-| `IDLE_TIMEOUT`         | 60                | WebSocket idle timeout in seconds |
+| `IDLE_TIMEOUT_SEC`     | 60                | WebSocket idle timeout in seconds |
 | `RATE_LIMIT_MAX`       | 10                | Max connections per IP per window |
-| `RATE_LIMIT_WINDOW_MS` | 60000 (1 min)     | Rate limit time window            |
+| `RATE_LIMIT_WINDOW_SEC`| 60                | Rate limit time window in seconds |
 | `MAX_CHANNELS`         | 4                 | Maximum concurrent channels       |
-| `COMPRESSION_ENABLED`  | false             | WebSocket per-message deflate     |
+| `COMPRESSION`          | false             | WebSocket per-message deflate     |
 
 **Fixed Protocol Constraints**:
 
@@ -542,9 +512,10 @@ These errors close the WebSocket connection.
 1. Connect with valid `channelId` (8 alphanumeric), `peerId` (non-empty), and `secret`
 2. Generate UUID v4 for each message `id`
 3. Use ISO 8601 format for `timestamp`
-4. Handle all server message types: `ready`, `peer`, `error`, `shutdown`
+4. Handle all server message types: `ready`, `peer`, `error`
 5. Track peer connection state via `ready` and `peer` messages
 6. Base64 encode binary data with `contentType: "binary"`
+7. Handle WebSocket close code 1001 for server shutdown (reconnect with backoff)
 
 ### Recommended
 
@@ -552,8 +523,7 @@ These errors close the WebSocket connection.
 2. Send ACK for important DATA messages
 3. Handle `NO_PEER_CONNECTED` errors (queue or discard)
 4. Implement message deduplication using `id` field
-5. Handle `shutdown` message gracefully
-6. Check `peer` field in `ready` to know if peer is already connected
+5. Check `peer` field in `ready` to know if peer is already connected
 
 ### Optional
 
@@ -567,7 +537,7 @@ These errors close the WebSocket connection.
 
 ```typescript
 // Message Types
-type MessageType = "control" | "data" | "ack" | "ready" | "peer" | "error" | "shutdown";
+type MessageType = "control" | "data" | "ack" | "ready" | "peer" | "error";
 
 // Content Types
 type ContentType = "text" | "binary";
@@ -642,16 +612,8 @@ interface ErrorMessage {
     };
 }
 
-interface ShutdownMessage {
-    header: MessageHeader & { type: "shutdown" };
-    payload: {
-        message: string;
-        gracePeriod?: number;
-    };
-}
-
 // Union type for all messages
-type ServerMessage = ReadyMessage | PeerMessage | ErrorMessage | ShutdownMessage;
+type ServerMessage = ReadyMessage | PeerMessage | ErrorMessage;
 type ClientMessage = DataMessage | AckMessage | ControlMessage;
 type Message = ServerMessage | ClientMessage;
 ```
@@ -668,7 +630,9 @@ type Message = ServerMessage | ClientMessage;
 | Connection ready | `ready`      | Server -> Client | peerId, channelId, peer |
 | Peer status      | `peer`       | Server -> Client | peerId, event           |
 | Error occurred   | `error`      | Server -> Client | code, message           |
-| Server stopping  | `shutdown`   | Server -> Client | message, gracePeriod    |
+
+**Server Shutdown**: When the server shuts down, it closes all connections with WebSocket close code `1001` (Going Away) 
+and reason "Server shutting down". Clients should implement reconnection logic with exponential backoff.
 
 ---
 
