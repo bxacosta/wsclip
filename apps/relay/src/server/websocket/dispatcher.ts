@@ -2,7 +2,7 @@ import type { Logger } from "pino";
 import {
     type AckMessage,
     type Connection,
-    type ConnectionEventType,
+    type ConnectionStatus,
     type ControlMessage,
     createConnectionMessage,
     createReadyMessage,
@@ -20,7 +20,7 @@ export function sendReadyMessage(ws: AppWebSocket, otherConnection: Connection |
     ws.send(serializeMessage(readyMessage));
 }
 
-export function notifyOtherConnections(ws: AppWebSocket, eventType: ConnectionEventType, logger: Logger): void {
+export function notifyOtherConnections(ws: AppWebSocket, eventType: ConnectionStatus, logger: Logger): void {
     const { sessionManager } = getContext();
     const { sessionId, connection } = ws.data;
 

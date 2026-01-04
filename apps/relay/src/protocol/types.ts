@@ -45,12 +45,12 @@ export const ContentType = {
 
 export type ContentType = (typeof ContentType)[keyof typeof ContentType];
 
-export const ConnectionEventType = {
-    JOINED: "joined",
-    LEFT: "left",
+export const ConnectionStatus = {
+    CONNECTED: "connected",
+    DISCONNECTED: "disconnected",
 } as const;
 
-export type ConnectionEventType = (typeof ConnectionEventType)[keyof typeof ConnectionEventType];
+export type ConnectionStatus = (typeof ConnectionStatus)[keyof typeof ConnectionStatus];
 
 export type ErrorDefinition = Readonly<{
     code: number;

@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import type {
     Connection,
-    ConnectionEventType,
     ConnectionMessage,
+    ConnectionStatus,
     ErrorCode,
     ErrorMessage,
     ReadyMessage,
@@ -28,7 +28,7 @@ export function createReadyMessage(
     };
 }
 
-export function createConnectionMessage(connectionId: string, event: ConnectionEventType): ConnectionMessage {
+export function createConnectionMessage(connectionId: string, event: ConnectionStatus): ConnectionMessage {
     return {
         header: {
             type: MessageType.CONNECTION,

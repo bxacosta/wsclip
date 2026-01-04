@@ -3,7 +3,7 @@
 // Message factories
 export { createConnectionMessage, createErrorMessage, createReadyMessage } from "./factories.ts";
 export type { AckMessage, Connection, ControlMessage, CRSPMessage, DataMessage } from "./types.ts";
-export { ConnectionEventType, ErrorCatalog, ErrorCode, MessageType } from "./types.ts";
+export { ConnectionStatus, ErrorCatalog, ErrorCode, MessageType } from "./types.ts";
 
 // Utilities
 export { serializeMessage } from "./utils.ts";

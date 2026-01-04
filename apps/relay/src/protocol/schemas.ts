@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ConnectionEventType, ContentType, ErrorCode, MessageType } from "./types.ts";
+import { ConnectionStatus, ContentType, ErrorCode, MessageType } from "./types.ts";
 
 const headerSchema = z.strictObject({
     type: z.enum(MessageType),
@@ -65,7 +65,7 @@ export const connectionMessageSchema = z.object({
     header: headerSchema.extend({ type: z.literal(MessageType.CONNECTION) }),
     payload: z.strictObject({
         connectionId: z.string(),
-        event: z.enum([ConnectionEventType.JOINED, ConnectionEventType.LEFT]),
+        event: z.enum([ConnectionStatus.CONNECTED, ConnectionStatus.DISCONNECTED]),
     }),
 });
 

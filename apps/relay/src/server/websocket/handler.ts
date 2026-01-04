@@ -2,7 +2,7 @@ import type { ServerWebSocket, WebSocketHandler } from "bun";
 import type { Logger } from "pino";
 import {
     type AckMessage,
-    ConnectionEventType,
+    ConnectionStatus,
     type ControlMessage,
     type DataMessage,
     ErrorCode,
@@ -115,7 +115,7 @@ export function createWebSocketHandler(): WebSocketHandler<WebSocketData> {
             sendReadyMessage(ws, result.otherConnection);
 
             if (result.shouldNotifyOthers) {
-                notifyOtherConnections(ws, ConnectionEventType.JOINED, logger);
+                notifyOtherConnections(ws, ConnectionStatus.CONNECTED, logger);
             }
         },
 
@@ -149,7 +149,7 @@ export function createWebSocketHandler(): WebSocketHandler<WebSocketData> {
             logger.info({ remainingConnections: result.remainingConnections }, "Connection left session");
 
             if (result.shouldNotifyOthers) {
-                notifyOtherConnections(ws, ConnectionEventType.LEFT, logger);
+                notifyOtherConnections(ws, ConnectionStatus.DISCONNECTED, logger);
             }
 
             if (result.sessionDestroyed) {
