@@ -113,6 +113,15 @@ public static class MessageFactory
         JsonSerializer.Serialize(message, JsonOptions);
     
     /// <summary>
+    /// Extracts the short ID (last segment) from a UUID
+    /// </summary>
+    public static string GetShortId(string messageId)
+    {
+        var segments = messageId.Split('-');
+        return segments.Length > 0 ? segments[^1] : messageId;
+    }
+    
+    /// <summary>
     /// Deserializes a message from JSON, determining type from header
     /// </summary>
     public static Message? Deserialize(string json)

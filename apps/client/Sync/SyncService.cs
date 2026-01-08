@@ -167,76 +167,101 @@ public sealed class SyncService : IAsyncDisposable
         }
         
         await _wsClient.SendAsync(message);
-        _logger.Info("SYNC", $"Sent {content.Type}: {SizeFormatter.Format(content.Size)}");
+        
+        var shortId = MessageFactory.GetShortId(message.Header.Id);
+        var logMessage = content.Type switch
+        {
+            ClipboardContentType.File => $"Sent: file \"{content.FileName}\" ({SizeFormatter.Format(content.Size)}) [{shortId}]",
+            _ => $"Sent: {content.Type.ToString().ToLower()} ({SizeFormatter.Format(content.Size)}) [{shortId}]"
+        };
+        _logger.Info("SYNC", logMessage);
     }
     
     private async void OnMessageReceived(object? sender, MessageReceivedEventArgs e)
     {
-        if (e.Message is not DataMessage data)
-        {
-            return;
-        }
-        
         try
         {
-            await ApplyReceivedContent(data);
+            switch (e.Message)
+            {
+                case DataMessage data:
+                    await ApplyReceivedContent(data);
+                    break;
+                    
+                case AckMessage ack:
+                    var shortId = MessageFactory.GetShortId(ack.Payload.MessageId);
+                    _logger.Info("SYNC", $"Received ACK [{shortId}]");
+                    break;
+            }
         }
         catch (Exception ex)
         {
-            _logger.Warn("SYNC", $"Error applying received content: {ex.Message}");
+            _logger.Warn("SYNC", $"Error processing message: {ex.Message}");
         }
     }
     
     private async Task ApplyReceivedContent(DataMessage data)
     {
         var payload = data.Payload;
-        var decodedData = Convert.FromBase64String(payload.Data);
+        var shortId = MessageFactory.GetShortId(data.Header.Id);
         
-        // Validate received content size against maxContentSize
-        if (decodedData.Length > _config.MaxContentSize)
+        // Handle TEXT (raw UTF-8) vs BINARY (base64 encoded)
+        if (payload.ContentType == ContentType.Text)
         {
-            _logger.Warn("SYNC", $"Received content too large: {SizeFormatter.Format(decodedData.Length)} > {SizeFormatter.Format(_config.MaxContentSize)} (max), ignoring");
-            return;
+            var text = payload.Data; // TEXT is raw UTF-8, not base64
+            var textBytes = System.Text.Encoding.UTF8.GetBytes(text);
+            
+            // Validate size
+            if (textBytes.Length > _config.MaxContentSize)
+            {
+                _logger.Warn("SYNC", $"Received content too large: {SizeFormatter.Format(textBytes.Length)} > {SizeFormatter.Format(_config.MaxContentSize)} (max), ignoring");
+                return;
+            }
+            
+            _logger.Info("SYNC", $"Received: text ({SizeFormatter.Format(textBytes.Length)}) [{shortId}]");
+            
+            // Mark as applied before writing to clipboard
+            _contentTracker.MarkAsApplied(null, text);
+            
+            ClipboardWriter.WriteText(text);
         }
-        
-        _logger.Info("SYNC", $"Received {payload.ContentType}: {SizeFormatter.Format(decodedData.Length)}");
-        
-        // Mark as applied before writing to clipboard
-        var textContent = payload.ContentType == ContentType.Text ? payload.Data : null;
-        _contentTracker.MarkAsApplied(decodedData, textContent);
-        
-        switch (payload.ContentType)
+        else // ContentType.Binary
         {
-            case ContentType.Text:
-                var text = System.Text.Encoding.UTF8.GetString(decodedData);
-                ClipboardWriter.WriteText(text);
-                _logger.Info("SYNC", $"Applied text ({text.Length} chars)");
-                break;
+            var decodedData = Convert.FromBase64String(payload.Data);
+            
+            // Validate size
+            if (decodedData.Length > _config.MaxContentSize)
+            {
+                _logger.Warn("SYNC", $"Received content too large: {SizeFormatter.Format(decodedData.Length)} > {SizeFormatter.Format(_config.MaxContentSize)} (max), ignoring");
+                return;
+            }
+            
+            // Mark as applied before writing to clipboard
+            _contentTracker.MarkAsApplied(decodedData, null);
+            
+            // Check if it's a file or image based on metadata
+            if (payload.Metadata?.Filename is not null)
+            {
+                // It's a file
+                _logger.Info("SYNC", $"Received: file \"{payload.Metadata.Filename}\" ({SizeFormatter.Format(decodedData.Length)}) [{shortId}]");
                 
-            case ContentType.Binary:
-                // Check if it's a file or image based on metadata
-                if (payload.Metadata?.Filename is not null)
+                var paths = _tempFileManager.SaveFiles([(payload.Metadata.Filename, decodedData)]);
+                if (paths.Length > 0)
                 {
-                    // It's a file
-                    var paths = _tempFileManager.SaveFiles([(payload.Metadata.Filename, decodedData)]);
-                    if (paths.Length > 0)
-                    {
-                        ClipboardWriter.WriteFile(paths[0]);
-                        _logger.Info("SYNC", $"Applied file: {payload.Metadata.Filename}");
-                    }
+                    ClipboardWriter.WriteFile(paths[0]);
                 }
-                else
-                {
-                    // It's an image
-                    ClipboardWriter.WriteImage(decodedData);
-                    _logger.Info("SYNC", "Applied image");
-                }
-                break;
+            }
+            else
+            {
+                // It's an image
+                _logger.Info("SYNC", $"Received: image ({SizeFormatter.Format(decodedData.Length)}) [{shortId}]");
+                ClipboardWriter.WriteImage(decodedData);
+            }
         }
         
         // Send ACK
         var ack = MessageFactory.CreateAck(data.Header.Id, AckStatus.Success);
         await _wsClient.SendAsync(ack);
+        _logger.Info("SYNC", $"Sent ACK [{shortId}]");
     }
     
     public async ValueTask DisposeAsync()
