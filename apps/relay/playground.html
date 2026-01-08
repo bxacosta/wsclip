@@ -361,6 +361,28 @@
         return span;
     }
 
+    function truncateLargeValues(obj, maxLength = 1000) {
+        if (typeof obj !== 'object' || obj === null) {
+            return obj;
+        }
+
+        if (Array.isArray(obj)) {
+            return obj.map(item => truncateLargeValues(item, maxLength));
+        }
+
+        const result = {};
+        for (const [key, value] of Object.entries(obj)) {
+            if (key === 'data' && typeof value === 'string' && value.length > maxLength) {
+                result[key] = value.substring(0, maxLength) + `... [truncated ${value.length - maxLength} chars]`;
+            } else if (typeof value === 'object' && value !== null) {
+                result[key] = truncateLargeValues(value, maxLength);
+            } else {
+                result[key] = value;
+            }
+        }
+        return result;
+    }
+
     function createLogEntry(type, message, direction, data) {
         const entry = document.createElement('div');
         entry.className = 'hover:bg-neutral-900/50 -mx-2 px-2 py-1 rounded transition-colors';
@@ -386,7 +408,7 @@
         if (data) {
             const dataDiv = document.createElement('div');
             dataDiv.className = 'ml-32 text-xs text-neutral-500 bg-neutral-900/50 border border-neutral-800 rounded p-2 mt-1 font-mono overflow-x-auto whitespace-pre';
-            dataDiv.textContent = JSON.stringify(data, null, 2);
+            dataDiv.textContent = JSON.stringify(truncateLargeValues(data), null, 2);
             entry.appendChild(dataDiv);
         }
 
