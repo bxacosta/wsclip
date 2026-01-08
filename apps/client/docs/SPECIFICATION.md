@@ -348,8 +348,7 @@ Without this check, Device A sends to B, B writes to clipboard, B detects change
 5. Send as DATA message with:
    - `contentType: "binary"`
    - `metadata.mimeType: "image/png"`
-   - `metadata.width`: image width in pixels
-   - `metadata.height`: image height in pixels
+   - `metadata.size`: size in bytes
 
 **Receiving:**
 1. Decode base64 to PNG bytes

@@ -44,7 +44,7 @@ public static class MessageFactory
     /// <summary>
     /// Creates a DATA message for binary content (image)
     /// </summary>
-    public static DataMessage CreateImageData(byte[] imageBytes, int width, int height) => new()
+    public static DataMessage CreateImageData(byte[] imageBytes) => new()
     {
         Header = CreateHeader(MessageType.Data),
         Payload = new DataPayload
@@ -54,9 +54,7 @@ public static class MessageFactory
             Metadata = new DataMetadata
             {
                 MimeType = "image/png",
-                Size = imageBytes.Length,
-                Width = width,
-                Height = height
+                Size = imageBytes.Length
             }
         }
     };
