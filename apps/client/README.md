@@ -1,103 +1,108 @@
-# WSClip Client
+# WSClip - Clipboard Synchronization Client
 
-Python client for WebSocket-based clipboard synchronization.
+A Windows clipboard synchronization client that enables real-time clipboard sharing between devices via WebSocket, with
+optional SOCKS5 proxy support.
 
-## Installation
+## Features
 
-From the project root:
+- **Real-time Sync**: Clipboard changes are instantly synchronized between paired devices
+- **Content Types**: Supports TEXT, IMAGE (PNG), and FILE synchronization
+- **SOCKS5 Proxy**: Optional proxy support for restricted network environments
+- **Auto-Reconnection**: Automatic reconnection with exponential backoff
+- **Portable**: Single-file executable, no installation required
+- **Configuration Wizard**: Interactive setup on first run
+
+## Requirements
+
+- Windows 10/11 (x64)
+- .NET 10.0 SDK (for building)
+
+## Build
 
 ```bash
-cd apps/client
-uv pip install -e .
+dotnet build
 ```
+
+## Run (Development)
+
+```bash
+# Run with default configuration
+dotnet run
+
+# Run with verbose logging
+dotnet run -- -v
+
+# Run with custom config file
+dotnet run -- -c ./myconfig.json
+```
+
+## Publish Portable Executable
+
+```bash
+dotnet publish -c Release
+```
+
+The executable is generated at: `bin/Release/net10.0-windows/win-x64/publish/wsclip.exe`
 
 ## Usage
 
-### Initialize configuration
-
 ```bash
-wsclip init
+# Show help
+wsclip --help
+
+# Show version
+wsclip --version
+
+# Run with default config
+wsclip
+
+# Run with verbose logging
+wsclip -v
+
+# Run with custom config
+wsclip -c /path/to/config.json
 ```
 
-### Start clipboard sync
+## Configuration
 
-**Manual mode** (use hotkey to send):
-```bash
-wsclip start --mode manual
+On first run, WSClip will launch an interactive setup wizard.
+
+Configuration is stored at: `~/.config/wsclip/config.json`
+
+### Config File Format
+
+```json
+{
+  "serverUrl": "wss://example.com:3000",
+  "secret": "your-shared-secret",
+  "sessionId": "AbCd1234",
+  "connectionId": "my-device",
+  "maxContentSize": 20971520,
+  "proxy": {
+    "enabled": true,
+    "host": "localhost",
+    "port": 9999
+  }
+}
 ```
 
-**Auto mode** (automatic monitoring):
-```bash
-wsclip start --mode auto
-```
+### Configuration Options
 
-### Join with token
+| Option           | Description                                   |
+|------------------|-----------------------------------------------|
+| `serverUrl`      | WebSocket server URL (ws:// or wss://)        |
+| `secret`         | Shared secret for authentication              |
+| `sessionId`      | 8-character alphanumeric session identifier   |
+| `connectionId`   | Device identifier (defaults to hostname)      |
+| `maxContentSize` | Maximum content size in bytes (default: 20MB) |
+| `proxy.enabled`  | Enable SOCKS5 proxy                           |
+| `proxy.host`     | Proxy host address                            |
+| `proxy.port`     | Proxy port number                             |
 
-```bash
-wsclip start --mode auto --token XXXX-YYYY-ZZZZ
-```
+## How It Works
 
-### Check status
-
-```bash
-wsclip status
-```
-
-## Project Structure
-
-```
-src/wsclip/
-├── cli/              # CLI commands and app
-│   ├── app.py       # Click application
-│   └── commands.py  # Command implementations
-│
-├── core/            # Business logic
-│   ├── sync_manager.py   # Orchestrates sync
-│   ├── connection.py     # Connection management
-│   └── pairing.py        # Token pairing
-│
-├── services/        # External services
-│   ├── websocket.py      # WebSocket client
-│   ├── clipboard.py      # Clipboard operations
-│   └── hotkeys.py        # Hotkey capture
-│
-├── models/          # Data models
-│   ├── config.py         # Configuration
-│   └── messages.py       # WebSocket messages
-│
-├── utils/           # Utilities
-│   ├── logger.py         # Logging
-│   ├── validators.py     # Validation
-│   └── helpers.py        # Helper functions
-│
-└── config/          # Configuration
-    ├── settings.py       # Default settings
-    └── constants.py      # Constants
-```
-
-## Architecture
-
-This client follows a pragmatic layered architecture:
-
-- **CLI Layer** (`cli/`): User interface, command parsing
-- **Core Layer** (`core/`): Business logic, orchestration
-- **Service Layer** (`services/`): External interactions (WebSocket, clipboard, hotkeys)
-- **Models** (`models/`): Data structures
-- **Utils** (`utils/`): Shared utilities
-- **Config** (`config/`): Settings and constants
-
-## Development
-
-### Run from source
-
-```bash
-cd apps/client
-python -m wsclip start --mode auto
-```
-
-### Build
-
-```bash
-cd apps/client
-uv build
-```
+1. **Connection**: WSClip connects to the WebSocket server with session credentials
+2. **Pairing**: Two devices with the same `sessionId` are paired
+3. **Monitoring**: Clipboard changes are detected via Windows native events
+4. **Sync**: Changes are sent to the paired device via the relay server
+5. **Apply**: Received content is written to the local clipboard
