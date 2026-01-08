@@ -12,9 +12,15 @@ public sealed class ContentTracker
     private readonly Logger _logger = Logger.Instance;
     private readonly object _lock = new();
     
+    // For preventing echo loops (content received from partner)
     private string? _lastAppliedHash;
     private DateTime _lastAppliedTime = DateTime.MinValue;
     private static readonly TimeSpan SuppressWindow = TimeSpan.FromMilliseconds(500);
+    
+    // For preventing duplicate sends (same content sent twice)
+    private string? _lastSentHash;
+    private DateTime _lastSentTime = DateTime.MinValue;
+    private static readonly TimeSpan DuplicateSendWindow = TimeSpan.FromMilliseconds(1000);
     
     /// <summary>
     /// Marks content as applied locally (received from partner)
@@ -30,20 +36,42 @@ public sealed class ContentTracker
     }
     
     /// <summary>
-    /// Checks if content should be sent to partner (was not just applied)
+    /// Marks content as sent to partner
+    /// </summary>
+    public void MarkAsSent(byte[]? data, string? text)
+    {
+        lock (_lock)
+        {
+            _lastSentHash = ComputeHash(data, text);
+            _lastSentTime = DateTime.UtcNow;
+        }
+    }
+    
+    /// <summary>
+    /// Checks if content should be sent to partner (was not just applied or recently sent)
     /// </summary>
     public bool ShouldSendContent(byte[]? data, string? text)
     {
         lock (_lock)
         {
-            // Within suppress window, compare hashes
+            var currentHash = ComputeHash(data, text);
+            
+            // Check if this is content we just received from partner (echo prevention)
             if (DateTime.UtcNow - _lastAppliedTime < SuppressWindow)
             {
-                var currentHash = ComputeHash(data, text);
-                
                 if (currentHash == _lastAppliedHash)
                 {
                     _logger.Debug("SYNC", "Content matches last applied, suppressing send");
+                    return false;
+                }
+            }
+            
+            // Check if we just sent this exact content (duplicate prevention)
+            if (DateTime.UtcNow - _lastSentTime < DuplicateSendWindow)
+            {
+                if (currentHash == _lastSentHash)
+                {
+                    _logger.Debug("SYNC", "Content matches last sent, suppressing duplicate");
                     return false;
                 }
             }
@@ -61,6 +89,8 @@ public sealed class ContentTracker
         {
             _lastAppliedHash = null;
             _lastAppliedTime = DateTime.MinValue;
+            _lastSentHash = null;
+            _lastSentTime = DateTime.MinValue;
         }
     }
     

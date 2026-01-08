@@ -153,7 +153,7 @@ public sealed class SyncService : IAsyncDisposable
                 break;
                 
             case ClipboardContentType.Image:
-                message = MessageFactory.CreateImageData(content.ImageData!, content.ImageWidth, content.ImageHeight);
+                message = MessageFactory.CreateImageData(content.ImageData!);
                 break;
                 
             case ClipboardContentType.File:
@@ -167,6 +167,9 @@ public sealed class SyncService : IAsyncDisposable
         }
         
         await _wsClient.SendAsync(message);
+        
+        // Mark as sent to prevent duplicate sends
+        _contentTracker.MarkAsSent(content.ImageData ?? content.FileData, content.Text);
         
         var shortId = MessageFactory.GetShortId(message.Header.Id);
         var logMessage = content.Type switch
